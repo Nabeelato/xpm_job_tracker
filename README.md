@@ -51,6 +51,21 @@ npm run dev
 The default admin is created only from `ADMIN_EMAIL`, `ADMIN_PASSWORD`, and `ADMIN_NAME`.
 Optional manager-level department users can be seeded with `DEPARTMENT_MANAGER_USERS_JSON`; each seeded manager is also set as a default auto-assignee for that department.
 
+## Server Deployment
+
+Before hosting publicly, set these production environment values in `.env`:
+
+```powershell
+APP_PORT="3000"
+ALLOWED_HOSTS="jobs.example.com"
+NEXTAUTH_URL="https://jobs.example.com"
+NEXTAUTH_SECRET="replace-with-a-long-random-production-secret"
+```
+
+Use your real domain in `ALLOWED_HOSTS` without `https://` or a path. If you will access the app by server IP instead of a domain, use that IP, for example `ALLOWED_HOSTS="203.0.113.10"`. Multiple values are comma-separated, such as `ALLOWED_HOSTS="jobs.example.com,www.jobs.example.com"`.
+
+Requests with any other `Host` header are rejected with `403 Forbidden` by `server.js` before the Next.js app handles them. If you put the app behind Nginx, Caddy, or another reverse proxy, configure the proxy to preserve the original `Host` header.
+
 ## Import Flow
 
 1. Admin or Manager uploads `.csv` or `.xlsx`.

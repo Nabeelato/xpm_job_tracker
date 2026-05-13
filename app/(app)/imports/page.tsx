@@ -5,20 +5,22 @@ import { buttonVariants } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { prisma } from "@/lib/db";
 import { requireRole } from "@/lib/rbac";
-import { cn, formatDateTime } from "@/lib/utils";
+import { cn, formatDate, formatDateTime } from "@/lib/utils";
 
 export default async function ImportsPage() {
-  await requireRole(["ADMIN", "MANAGER"]);
+  const user = await requireRole(["ADMIN", "MANAGER"]);
   const batches = await prisma.importBatch.findMany({
     select: {
       id: true,
       fileName: true,
       status: true,
       uploadedAt: true,
-      totalRows: true,
+      xpmDownloadedAt: true,
       newJobsCount: true,
-      updatedJobsCount: true,
-      errorRowsCount: true,
+      missingJobsCount: true,
+      stateUpdatedCount: true,
+      completedStateCount: true,
+      cancelledStateCount: true,
       uploadedBy: { select: { name: true } },
     },
     orderBy: { uploadedAt: "desc" },
@@ -27,7 +29,11 @@ export default async function ImportsPage() {
 
   return (
     <>
-      <PageHeader action={{ href: "/imports/upload", label: "Upload File" }} description="Import batches are staged first and only applied after preview confirmation." title="Import History" />
+      <PageHeader
+        action={user.role === "ADMIN" ? { href: "/imports/upload", label: "Upload File" } : undefined}
+        description="Import batches are staged first and only applied after preview confirmation."
+        title="Import History"
+      />
       <div className="rounded-lg border bg-white">
         <Table>
           <TableHeader>
@@ -36,10 +42,11 @@ export default async function ImportsPage() {
               <TableHead>Status</TableHead>
               <TableHead>Uploaded By</TableHead>
               <TableHead>Uploaded At</TableHead>
-              <TableHead>Total Rows</TableHead>
-              <TableHead>New</TableHead>
-              <TableHead>Updated</TableHead>
-              <TableHead>Errors</TableHead>
+              <TableHead>XPM File Date</TableHead>
+              <TableHead>State Updated</TableHead>
+              <TableHead>New Jobs</TableHead>
+              <TableHead>Missing</TableHead>
+              <TableHead>Completed/Cancelled</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -53,29 +60,24 @@ export default async function ImportsPage() {
                 <TableCell>{batch.status}</TableCell>
                 <TableCell>{batch.uploadedBy.name}</TableCell>
                 <TableCell>{formatDateTime(batch.uploadedAt)}</TableCell>
-                <TableCell>{batch.totalRows}</TableCell>
+                <TableCell>{formatDate(batch.xpmDownloadedAt)}</TableCell>
+                <TableCell>{batch.stateUpdatedCount}</TableCell>
                 <TableCell>{batch.newJobsCount}</TableCell>
-                <TableCell>{batch.updatedJobsCount}</TableCell>
-                <TableCell>
-                  {batch.errorRowsCount ? (
-                    <Link className="text-destructive hover:underline" href={`/imports/${batch.id}/errors`}>
-                      {batch.errorRowsCount}
-                    </Link>
-                  ) : (
-                    0
-                  )}
-                </TableCell>
+                <TableCell>{batch.missingJobsCount}</TableCell>
+                <TableCell>{batch.completedStateCount + batch.cancelledStateCount}</TableCell>
               </TableRow>
             ))}
           </TableBody>
         </Table>
       </div>
-      <div className="mt-4">
-        <Link className={cn(buttonVariants({ variant: "outline" }), "inline-flex items-center gap-2")} href="/imports/upload">
-          <FileUp className="h-4 w-4" />
-          Upload another file
-        </Link>
-      </div>
+      {user.role === "ADMIN" ? (
+        <div className="mt-4">
+          <Link className={cn(buttonVariants({ variant: "outline" }), "inline-flex items-center gap-2")} href="/imports/upload">
+            <FileUp className="h-4 w-4" />
+            Upload another file
+          </Link>
+        </div>
+      ) : null}
     </>
   );
 }

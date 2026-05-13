@@ -192,9 +192,10 @@ export async function applyImportBatch(importBatchId: string, changedById: strin
       const departments = departmentMap(await tx.department.findMany());
       const importableRows = batch.rows.filter(
         (row) =>
-          row.action === ImportRowAction.NEW_JOB ||
-          row.action === ImportRowAction.UPDATE_JOB ||
-          row.action === ImportRowAction.UNCHANGED,
+          row.stateComparisonCategory !== ImportStateComparisonCategory.MISSING_FROM_UPLOAD &&
+          (row.action === ImportRowAction.NEW_JOB ||
+            row.action === ImportRowAction.UPDATE_JOB ||
+            row.action === ImportRowAction.UNCHANGED),
       );
       const importJobIds = importableRows
         .map((row) => row.detectedJobId)
@@ -320,25 +321,30 @@ export async function applyImportBatch(importBatchId: string, changedById: strin
         for (const job of missingJobs) {
           addLog(logs, job.id, importBatchId, changedById, "missing_from_latest_import", false, true);
         }
-        await tx.importRow.createMany({
-          data: missingJobs.map((job) => ({
-            importBatchId,
-            rowNumber: 0,
-            rawDataJson: {},
-            detectedJobId: job.jobIdFromExcel,
-            detectedClientName: job.client.displayName,
-            detectedJobName: job.jobName,
-            detectedDepartmentCode: null,
-            previousXpmState: job.xpmState,
-            newXpmState: null,
-            previousStateNumber: job.jobStateNumber,
-            newStateNumber: null,
-            stateComparisonCategory: ImportStateComparisonCategory.MISSING_FROM_UPLOAD,
-            action: ImportRowAction.UNCHANGED,
-            matchedClientId: job.clientId,
-            matchedJobId: job.id,
-          })),
-        });
+        const stagedMissingRows = batch.rows.some(
+          (row) => row.stateComparisonCategory === ImportStateComparisonCategory.MISSING_FROM_UPLOAD,
+        );
+        if (!stagedMissingRows) {
+          await tx.importRow.createMany({
+            data: missingJobs.map((job) => ({
+              importBatchId,
+              rowNumber: 0,
+              rawDataJson: {},
+              detectedJobId: job.jobIdFromExcel,
+              detectedClientName: job.client.displayName,
+              detectedJobName: job.jobName,
+              detectedDepartmentCode: null,
+              previousXpmState: job.xpmState,
+              newXpmState: null,
+              previousStateNumber: job.jobStateNumber,
+              newStateNumber: null,
+              stateComparisonCategory: ImportStateComparisonCategory.MISSING_FROM_UPLOAD,
+              action: ImportRowAction.UNCHANGED,
+              matchedClientId: job.clientId,
+              matchedJobId: job.id,
+            })),
+          });
+        }
       }
 
       if (logs.length > 0) {

@@ -1,18 +1,16 @@
-import Link from "next/link";
 import { CheckCircle2 } from "lucide-react";
-import { ImportBatchBreakdown } from "@/components/import-batch-breakdown";
+import { FormSubmitButton } from "@/components/form-submit-button";
+import { ImportResultSections } from "@/components/import-result-sections";
 import { ImportSummaryCards } from "@/components/import-summary-cards";
 import { PageHeader } from "@/components/page-header";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { prisma } from "@/lib/db";
 import { requireRole } from "@/lib/rbac";
-import { formatDateTime } from "@/lib/utils";
+import { formatDate, formatDateTime } from "@/lib/utils";
 import { confirmImportAction } from "../../actions";
 
 export default async function ImportPreviewPage({ params }: { params: Promise<{ id: string }> }) {
-  await requireRole(["ADMIN", "MANAGER"]);
+  const user = await requireRole(["ADMIN", "MANAGER"]);
   const { id } = await params;
   const batch = await prisma.importBatch.findUnique({
     where: { id },
@@ -21,6 +19,7 @@ export default async function ImportPreviewPage({ params }: { params: Promise<{ 
       fileName: true,
       status: true,
       uploadedAt: true,
+      xpmDownloadedAt: true,
       totalRows: true,
       newJobsCount: true,
       updatedJobsCount: true,
@@ -51,8 +50,11 @@ export default async function ImportPreviewPage({ params }: { params: Promise<{ 
           detectedJobName: true,
           detectedDepartmentCode: true,
           matchedClientId: true,
+          previousXpmState: true,
           newXpmState: true,
+          previousStateNumber: true,
           newStateNumber: true,
+          stateComparisonCategory: true,
           errorMessage: true,
         },
         orderBy: { rowNumber: "asc" },
@@ -61,11 +63,14 @@ export default async function ImportPreviewPage({ params }: { params: Promise<{ 
   });
 
   if (!batch) return null;
-  const issueRows = batch.rows.filter((row) => row.action === "ERROR" || row.action === "DUPLICATE_IN_FILE").slice(0, 20);
+  const canConfirm = user.role === "ADMIN";
 
   return (
     <>
-      <PageHeader description={`${batch.fileName} | Uploaded by ${batch.uploadedBy.name} | ${formatDateTime(batch.uploadedAt)}`} title="Import Preview" />
+      <PageHeader
+        description={`${batch.fileName} | Uploaded by ${batch.uploadedBy.name} | Uploaded ${formatDateTime(batch.uploadedAt)} | XPM file date ${formatDate(batch.xpmDownloadedAt)}`}
+        title="Import Preview"
+      />
       <ImportSummaryCards batch={batch} />
       <Card className="mt-5">
         <CardHeader>
@@ -75,55 +80,20 @@ export default async function ImportPreviewPage({ params }: { params: Promise<{ 
           <p className="text-sm text-muted-foreground">
             Confirmation creates or updates jobs, preserves assignments/status/comments/manual department corrections, and marks previously imported missing jobs without deleting them.
           </p>
-          <form action={confirmImportAction}>
-            <input name="batchId" type="hidden" value={batch.id} />
-            <Button disabled={batch.status !== "STAGED"} type="submit">
-              <CheckCircle2 className="h-4 w-4" />
-              Confirm import
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
-      <ImportBatchBreakdown rows={batch.rows} />
-
-      <Card className="mt-5">
-        <CardHeader>
-          <CardTitle>Duplicate and Error Rows</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {issueRows.length ? (
-            <>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Row</TableHead>
-                    <TableHead>Job No.</TableHead>
-                    <TableHead>Client</TableHead>
-                    <TableHead>Job Name</TableHead>
-                    <TableHead>Issue</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {issueRows.map((row) => (
-                    <TableRow key={row.id}>
-                      <TableCell>{row.rowNumber}</TableCell>
-                      <TableCell>{row.detectedJobId ?? "-"}</TableCell>
-                      <TableCell>{row.detectedClientName ?? "-"}</TableCell>
-                      <TableCell>{row.detectedJobName ?? "-"}</TableCell>
-                      <TableCell className="text-destructive">{row.errorMessage ?? row.action}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-              <Link className="mt-3 inline-block text-sm text-primary hover:underline" href={`/imports/${batch.id}/errors`}>
-                View all error rows
-              </Link>
-            </>
+          {canConfirm ? (
+            <form action={confirmImportAction}>
+              <input name="batchId" type="hidden" value={batch.id} />
+              <FormSubmitButton disabled={batch.status !== "STAGED"} pendingLabel="Applying import...">
+                <CheckCircle2 className="h-4 w-4" />
+                Confirm import
+              </FormSubmitButton>
+            </form>
           ) : (
-            <p className="text-sm text-muted-foreground">No duplicate or error rows detected.</p>
+            <p className="text-sm text-muted-foreground">Only administrators can confirm imports.</p>
           )}
         </CardContent>
       </Card>
+      <ImportResultSections rows={batch.rows} />
     </>
   );
 }

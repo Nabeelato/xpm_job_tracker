@@ -14,6 +14,14 @@ export function formatDateTime(value: Date | string | null | undefined) {
   }).format(date);
 }
 
+export function formatDate(value: Date | string | null | undefined) {
+  if (!value) return "-";
+  const date = typeof value === "string" ? new Date(value) : value;
+  return new Intl.DateTimeFormat("en", {
+    dateStyle: "medium",
+  }).format(date);
+}
+
 export function titleCaseEnum(value: string) {
   return value
     .toLowerCase()

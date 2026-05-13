@@ -1,8 +1,12 @@
 import Link from "next/link";
+import { FileUp } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
+import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { prisma } from "@/lib/db";
 import { getDashboardMetrics } from "@/lib/optimized-queries";
 import { requireUser } from "@/lib/rbac";
+import { cn, formatDate, formatDateTime } from "@/lib/utils";
 
 function MetricCard({ label, value, href }: { label: string; value: number; href: string }) {
   return (
@@ -19,11 +23,40 @@ function MetricCard({ label, value, href }: { label: string; value: number; href
 
 export default async function DashboardPage() {
   const user = await requireUser();
-  const metrics = await getDashboardMetrics(user);
+  const [metrics, latestImport] = await Promise.all([
+    getDashboardMetrics(user),
+    prisma.importBatch.findFirst({
+      orderBy: { uploadedAt: "desc" },
+      select: { id: true, fileName: true, status: true, uploadedAt: true, xpmDownloadedAt: true },
+    }),
+  ]);
 
   return (
     <>
-      <PageHeader description="A quick view of what needs attention now." title="Dashboard" />
+      <PageHeader
+        action={user.role === "ADMIN" ? { href: "/imports/upload", label: "Upload Import" } : undefined}
+        description="A quick view of what needs attention now."
+        title="Dashboard"
+      />
+      <Card className="mb-4">
+        <CardContent className="flex flex-col gap-3 p-5 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <div className="text-sm text-muted-foreground">Last uploaded import file</div>
+            <div className="mt-1 text-lg font-semibold">{latestImport ? formatDateTime(latestImport.uploadedAt) : "No imports uploaded yet"}</div>
+            {latestImport ? (
+              <div className="mt-1 text-sm text-muted-foreground">
+                {latestImport.fileName} | {latestImport.status} | XPM file date {formatDate(latestImport.xpmDownloadedAt)}
+              </div>
+            ) : null}
+          </div>
+          {user.role === "ADMIN" ? (
+            <Link className={cn(buttonVariants(), "self-start sm:self-center")} href="/imports/upload">
+              <FileUp className="h-4 w-4" />
+              Import file
+            </Link>
+          ) : null}
+        </CardContent>
+      </Card>
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard href="/jobs" label="Total jobs" value={metrics.totalJobs} />
         <MetricCard href="/clients" label="Total clients" value={metrics.totalClients} />

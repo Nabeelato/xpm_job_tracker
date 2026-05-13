@@ -228,6 +228,7 @@ model ImportBatch {
   uploadedById        String          @map("uploaded_by_id")
   uploadedBy          User            @relation("UploadedBy", fields: [uploadedById], references: [id])
   uploadedAt          DateTime        @default(now()) @map("uploaded_at")
+  xpmDownloadedAt     DateTime?       @map("xpm_downloaded_at")
   status              ImportStatus    @default(STAGED)
   totalRows           Int             @default(0) @map("total_rows")
   newClientsCount     Int             @default(0) @map("new_clients_count")

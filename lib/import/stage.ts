@@ -24,7 +24,7 @@ function comparisonCategory(previousNumber: number | null | undefined, newNumber
   return ImportStateComparisonCategory.NOT_APPLICABLE;
 }
 
-export async function stageImportBatch(file: File, uploadedById: string) {
+export async function stageImportBatch(file: File, uploadedById: string, xpmDownloadedAt: Date) {
   const parsed = await parseImportFile(file);
   const seenJobIds = new Set<string>();
   const validJobIds = new Set<string>();
@@ -155,12 +155,33 @@ export async function stageImportBatch(file: File, uploadedById: string) {
   const newClientKeys = new Set([...validClientKeys].filter((key) => !clientByKey.has(key)));
   const matchedClientKeys = new Set([...validClientKeys].filter((key) => clientByKey.has(key)));
   const validJobIdList = [...validJobIds];
-  const missingJobsCount = await prisma.job.count({
+  const missingJobs = await prisma.job.findMany({
     where: {
       archived: false,
       jobIdFromExcel: { notIn: validJobIdList.length ? validJobIdList : ["__none__"] },
     },
+    include: { client: true },
+    orderBy: [{ client: { displayName: "asc" } }, { jobIdFromExcel: "asc" }],
   });
+  const missingJobsCount = missingJobs.length;
+  const missingImportRows: Prisma.ImportRowCreateManyInput[] = missingJobs.map((job) => ({
+    importBatchId: "",
+    rowNumber: 0,
+    rawDataJson: {},
+    detectedJobId: job.jobIdFromExcel,
+    detectedClientName: job.client.displayName,
+    detectedJobName: job.jobName,
+    detectedDepartmentCode: null,
+    previousXpmState: job.xpmState,
+    newXpmState: null,
+    previousStateNumber: job.jobStateNumber,
+    newStateNumber: null,
+    stateComparisonCategory: ImportStateComparisonCategory.MISSING_FROM_UPLOAD,
+    action: ImportRowAction.UNCHANGED,
+    errorMessage: null,
+    matchedClientId: job.clientId,
+    matchedJobId: job.id,
+  }));
 
   return prisma.$transaction(async (tx) => {
     const batch = await tx.importBatch.create({
@@ -168,6 +189,7 @@ export async function stageImportBatch(file: File, uploadedById: string) {
         fileName: parsed.fileName,
         fileHash: parsed.fileHash,
         uploadedById,
+        xpmDownloadedAt,
         totalRows: parsed.rows.length,
         newClientsCount: newClientKeys.size,
         matchedClientsCount: matchedClientKeys.size,
@@ -190,9 +212,10 @@ export async function stageImportBatch(file: File, uploadedById: string) {
       },
     });
 
-    if (importRows.length > 0) {
+    const rowsToCreate = [...importRows, ...missingImportRows];
+    if (rowsToCreate.length > 0) {
       await tx.importRow.createMany({
-        data: importRows.map((row) => ({ ...row, importBatchId: batch.id })),
+        data: rowsToCreate.map((row) => ({ ...row, importBatchId: batch.id })),
       });
     }
 

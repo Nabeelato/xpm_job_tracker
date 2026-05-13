@@ -19,6 +19,7 @@ FROM base AS runner
 ENV NODE_ENV=production
 ENV HOST=0.0.0.0
 ENV PORT=3000
+ENV ALLOWED_HOSTS=localhost,127.0.0.1,[::1]
 
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/.next ./.next

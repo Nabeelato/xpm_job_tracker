@@ -1,14 +1,16 @@
-import { Upload } from "lucide-react";
+import { ImportUploadForm } from "@/components/import-upload-form";
 import { PageHeader } from "@/components/page-header";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { maxUploadSizeBytes, requiredUploadHeaders } from "@/lib/constants";
 import { requireRole } from "@/lib/rbac";
 import { stageImportAction } from "../actions";
 
-export default async function UploadImportPage() {
-  await requireRole(["ADMIN", "MANAGER"]);
+export default async function UploadImportPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string }>;
+}) {
+  await requireRole(["ADMIN"]);
+  const { error } = await searchParams;
 
   return (
     <>
@@ -18,27 +20,7 @@ export default async function UploadImportPage() {
           <CardTitle>Source File</CardTitle>
         </CardHeader>
         <CardContent>
-          <form action={stageImportAction} className="space-y-4">
-            <div className="space-y-2">
-              <label className="text-sm font-medium" htmlFor="file">
-                CSV or XLSX file
-              </label>
-              <Input accept=".csv,.xlsx" id="file" name="file" required type="file" />
-              <p className="text-xs text-muted-foreground">Maximum size: {Math.floor(maxUploadSizeBytes / 1024 / 1024)}MB</p>
-            </div>
-            <div className="rounded-md border bg-muted/30 p-3 text-sm">
-              <div className="font-medium">Required headers</div>
-              <ul className="mt-2 space-y-1 text-muted-foreground">
-                {requiredUploadHeaders.map((header) => (
-                  <li key={header}>{header}</li>
-                ))}
-              </ul>
-            </div>
-            <Button type="submit">
-              <Upload className="h-4 w-4" />
-              Stage import
-            </Button>
-          </form>
+          <ImportUploadForm action={stageImportAction} errorCode={error} />
         </CardContent>
       </Card>
     </>

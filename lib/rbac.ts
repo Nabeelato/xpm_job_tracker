@@ -56,7 +56,7 @@ export async function requireRole(roles: UserRole[]) {
 }
 
 export function canUpload(role: UserRole) {
-  return role === "ADMIN" || role === "MANAGER";
+  return role === "ADMIN";
 }
 
 export function canManageUsers(role: UserRole) {
