@@ -1,0 +1,369 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  ADMIN
+  MANAGER
+  SUPERVISOR
+  STAFF
+}
+
+enum InternalStatus {
+  UNASSIGNED
+  ASSIGNED
+  IN_PROGRESS
+  SUBMITTED_FOR_REVIEW
+  CHANGES_REQUIRED
+  COMPLETED
+  ON_HOLD
+  ARCHIVED
+}
+
+enum AssignmentRole {
+  PRIMARY
+  REVIEWER
+  SUPERVISOR
+  HELPER
+}
+
+enum AssignmentSource {
+  MANUAL
+  AUTO_DEPARTMENT
+  AUTO_QC
+}
+
+enum ImportStatus {
+  STAGED
+  APPLIED
+  FAILED
+}
+
+enum ImportRowAction {
+  NEW_JOB
+  UPDATE_JOB
+  UNCHANGED
+  DUPLICATE_IN_FILE
+  ERROR
+}
+
+enum ChangeSource {
+  IMPORT
+  USER
+  SYSTEM
+}
+
+enum ImportStateComparisonCategory {
+  NOT_APPLICABLE
+  NEW_MAIN
+  STATE_UPDATED
+  STATE_UNCHANGED
+  MOVED_OUT_OF_MAIN
+  COMPLETED
+  CANCELLED
+  MISSING_FROM_UPLOAD
+}
+
+enum NotificationType {
+  COMMENT
+  ASSIGNMENT_ADDED
+  ASSIGNMENT_REMOVED
+  DIARY_ENTRY
+}
+
+model User {
+  id                  String            @id @default(cuid())
+  name                String
+  email               String            @unique
+  passwordHash        String            @map("password_hash")
+  role                UserRole
+  departmentId        String?           @map("department_id")
+  department          Department?       @relation(fields: [departmentId], references: [id])
+  supervisorId        String?           @map("supervisor_id")
+  supervisor          User?             @relation("SupervisorTeam", fields: [supervisorId], references: [id])
+  teamMembers         User[]            @relation("SupervisorTeam")
+  active              Boolean           @default(true)
+  createdAt           DateTime          @default(now()) @map("created_at")
+  updatedAt           DateTime          @updatedAt @map("updated_at")
+  assignments         JobAssignment[]   @relation("AssignedUser")
+  assignedBy          JobAssignment[]   @relation("AssignedBy")
+  uploadedBatches     ImportBatch[]     @relation("UploadedBy")
+  comments            JobComment[]
+  changeLogs          JobChangeLog[]    @relation("ChangedBy")
+  defaultDepartmentAssignments DepartmentDefaultAssignee[]
+  receivedNotifications Notification[]  @relation("NotificationRecipient")
+  actedNotifications    Notification[]  @relation("NotificationActor")
+  authoredDiaryEntries  DiaryEntry[]    @relation("DiaryAuthor")
+  receivedDiaryEntries  DiaryEntry[]    @relation("DiaryRecipient")
+
+  @@index([departmentId])
+  @@index([supervisorId])
+  @@map("users")
+}
+
+model Client {
+  id                  String    @id @default(cuid())
+  displayName         String    @map("display_name")
+  normalizedClientKey String    @unique @map("normalized_client_key")
+  sourceClientName    String    @map("source_client_name")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+  jobs                Job[]
+  importRows          ImportRow[]
+
+  @@index([displayName])
+  @@map("clients")
+}
+
+model Department {
+  id               String   @id @default(cuid())
+  code             String   @unique
+  name             String
+  active           Boolean  @default(true)
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+  autoDetectedJobs Job[]    @relation("AutoDetectedDepartment")
+  finalJobs        Job[]    @relation("FinalDepartment")
+  users            User[]
+  defaultAssignees DepartmentDefaultAssignee[]
+
+  @@map("departments")
+}
+
+model DepartmentDefaultAssignee {
+  id           String     @id @default(cuid())
+  departmentId String     @map("department_id")
+  department   Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  userId       String     @map("user_id")
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  active       Boolean    @default(true)
+  createdAt    DateTime   @default(now()) @map("created_at")
+  updatedAt    DateTime   @updatedAt @map("updated_at")
+
+  @@unique([departmentId, userId])
+  @@index([userId])
+  @@map("department_default_assignees")
+}
+
+model Job {
+  id                             String           @id @default(cuid())
+  jobIdFromExcel                 String           @unique @map("job_id_from_excel")
+  clientId                       String           @map("client_id")
+  client                         Client           @relation(fields: [clientId], references: [id])
+  jobName                        String           @map("job_name")
+  priority                       String?
+  xpmState                       String?          @map("xpm_state")
+  jobStateNumber                 Int?             @map("job_state_number")
+  stateEnteredAt                 DateTime?        @map("state_entered_at")
+  sourceManagerName              String?          @map("source_manager_name")
+  sourcePartnerName              String?          @map("source_partner_name")
+  autoDetectedDepartmentId       String?          @map("auto_detected_department_id")
+  autoDetectedDepartment         Department?      @relation("AutoDetectedDepartment", fields: [autoDetectedDepartmentId], references: [id])
+  finalDepartmentId              String           @map("final_department_id")
+  finalDepartment                Department       @relation("FinalDepartment", fields: [finalDepartmentId], references: [id])
+  departmentManuallyOverridden   Boolean          @default(false) @map("department_manually_overridden")
+  internalStatus                 InternalStatus   @default(UNASSIGNED) @map("internal_status")
+  missingFromLatestImport        Boolean          @default(false) @map("missing_from_latest_import")
+  archived                       Boolean          @default(false)
+  lastSeenImportBatchId          String?          @map("last_seen_import_batch_id")
+  lastSeenImportBatch            ImportBatch?     @relation("LastSeenJobs", fields: [lastSeenImportBatchId], references: [id])
+  lastSeenAt                     DateTime?        @map("last_seen_at")
+  createdFromImportBatchId       String?          @map("created_from_import_batch_id")
+  createdFromImportBatch         ImportBatch?     @relation("CreatedJobs", fields: [createdFromImportBatchId], references: [id])
+  createdAt                      DateTime         @default(now()) @map("created_at")
+  updatedAt                      DateTime         @updatedAt @map("updated_at")
+  assignments                    JobAssignment[]
+  importRows                     ImportRow[]
+  changeLogs                     JobChangeLog[]
+  comments                       JobComment[]
+  notifications                  Notification[]
+
+  @@index([clientId])
+  @@index([finalDepartmentId])
+  @@index([internalStatus])
+  @@index([xpmState])
+  @@index([jobStateNumber])
+  @@index([stateEnteredAt])
+  @@index([missingFromLatestImport])
+  @@index([archived, updatedAt])
+  @@index([missingFromLatestImport, updatedAt])
+  @@index([jobStateNumber, stateEnteredAt])
+  @@index([finalDepartmentId, updatedAt])
+  @@index([clientId, updatedAt])
+  @@map("jobs")
+}
+
+model JobAssignment {
+  id               String         @id @default(cuid())
+  jobId            String         @map("job_id")
+  job              Job            @relation(fields: [jobId], references: [id])
+  userId           String         @map("user_id")
+  user             User           @relation("AssignedUser", fields: [userId], references: [id])
+  assignmentRole   AssignmentRole @map("assignment_role")
+  assignmentSource AssignmentSource @default(MANUAL) @map("assignment_source")
+  assignedById     String?        @map("assigned_by_id")
+  assignedBy       User?          @relation("AssignedBy", fields: [assignedById], references: [id])
+  assignedAt       DateTime       @default(now()) @map("assigned_at")
+  active           Boolean        @default(true)
+  createdAt        DateTime       @default(now()) @map("created_at")
+  updatedAt        DateTime       @updatedAt @map("updated_at")
+
+  @@index([jobId])
+  @@index([userId])
+  @@index([assignedById])
+  @@index([assignmentSource])
+  @@index([jobId, active])
+  @@index([userId, active, jobId])
+  @@map("job_assignments")
+}
+
+model ImportBatch {
+  id                  String          @id @default(cuid())
+  fileName            String          @map("file_name")
+  fileHash            String          @map("file_hash")
+  uploadedById        String          @map("uploaded_by_id")
+  uploadedBy          User            @relation("UploadedBy", fields: [uploadedById], references: [id])
+  uploadedAt          DateTime        @default(now()) @map("uploaded_at")
+  status              ImportStatus    @default(STAGED)
+  totalRows           Int             @default(0) @map("total_rows")
+  newClientsCount     Int             @default(0) @map("new_clients_count")
+  matchedClientsCount Int             @default(0) @map("matched_clients_count")
+  newJobsCount        Int             @default(0) @map("new_jobs_count")
+  updatedJobsCount    Int             @default(0) @map("updated_jobs_count")
+  unchangedJobsCount  Int             @default(0) @map("unchanged_jobs_count")
+  missingJobsCount    Int             @default(0) @map("missing_jobs_count")
+  vatJobsCount        Int             @default(0) @map("vat_jobs_count")
+  bkJobsCount         Int             @default(0) @map("bk_jobs_count")
+  afsJobsCount        Int             @default(0) @map("afs_jobs_count")
+  softwareBkJobsCount Int             @default(0) @map("software_bk_jobs_count")
+  unclassifiedJobsCount Int           @default(0) @map("unclassified_jobs_count")
+  duplicateRowsCount  Int             @default(0) @map("duplicate_rows_count")
+  errorRowsCount      Int             @default(0) @map("error_rows_count")
+  stateUpdatedCount   Int             @default(0) @map("state_updated_count")
+  stateUnchangedCount Int             @default(0) @map("state_unchanged_count")
+  movedOutOfMainCount Int             @default(0) @map("moved_out_of_main_count")
+  completedStateCount Int             @default(0) @map("completed_state_count")
+  cancelledStateCount Int             @default(0) @map("cancelled_state_count")
+  createdAt           DateTime        @default(now()) @map("created_at")
+  updatedAt           DateTime        @updatedAt @map("updated_at")
+  rows                ImportRow[]
+  changeLogs          JobChangeLog[]
+  createdJobs         Job[]           @relation("CreatedJobs")
+  lastSeenJobs        Job[]           @relation("LastSeenJobs")
+
+  @@index([uploadedById])
+  @@index([status])
+  @@map("import_batches")
+}
+
+model ImportRow {
+  id                     String          @id @default(cuid())
+  importBatchId          String          @map("import_batch_id")
+  importBatch            ImportBatch     @relation(fields: [importBatchId], references: [id], onDelete: Cascade)
+  rowNumber              Int             @map("row_number")
+  rawDataJson            Json            @map("raw_data_json")
+  detectedJobId          String?         @map("detected_job_id")
+  detectedClientName     String?         @map("detected_client_name")
+  detectedJobName        String?         @map("detected_job_name")
+  detectedDepartmentCode String?         @map("detected_department_code")
+  previousXpmState       String?         @map("previous_xpm_state")
+  newXpmState            String?         @map("new_xpm_state")
+  previousStateNumber    Int?            @map("previous_state_number")
+  newStateNumber         Int?            @map("new_state_number")
+  stateComparisonCategory ImportStateComparisonCategory @default(NOT_APPLICABLE) @map("state_comparison_category")
+  action                 ImportRowAction
+  errorMessage           String?         @map("error_message")
+  matchedClientId        String?         @map("matched_client_id")
+  matchedClient          Client?         @relation(fields: [matchedClientId], references: [id])
+  matchedJobId           String?         @map("matched_job_id")
+  matchedJob             Job?            @relation(fields: [matchedJobId], references: [id])
+  createdAt              DateTime        @default(now()) @map("created_at")
+  updatedAt              DateTime        @updatedAt @map("updated_at")
+
+  @@index([importBatchId])
+  @@index([matchedClientId])
+  @@index([matchedJobId])
+  @@index([stateComparisonCategory])
+  @@map("import_rows")
+}
+
+model JobChangeLog {
+  id             String       @id @default(cuid())
+  jobId          String       @map("job_id")
+  job            Job          @relation(fields: [jobId], references: [id])
+  importBatchId  String?      @map("import_batch_id")
+  importBatch    ImportBatch? @relation(fields: [importBatchId], references: [id])
+  changedById    String?      @map("changed_by_id")
+  changedBy      User?        @relation("ChangedBy", fields: [changedById], references: [id])
+  changeSource   ChangeSource @map("change_source")
+  fieldName      String       @map("field_name")
+  oldValue       String?      @map("old_value")
+  newValue       String?      @map("new_value")
+  changedAt      DateTime     @default(now()) @map("changed_at")
+
+  @@index([jobId])
+  @@index([importBatchId])
+  @@index([changedById])
+  @@map("job_change_logs")
+}
+
+model JobComment {
+  id        String   @id @default(cuid())
+  jobId     String   @map("job_id")
+  job       Job      @relation(fields: [jobId], references: [id])
+  userId    String   @map("user_id")
+  user      User     @relation(fields: [userId], references: [id])
+  comment   String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([jobId])
+  @@index([userId])
+  @@map("job_comments")
+}
+
+model Notification {
+  id           String           @id @default(cuid())
+  recipientId  String           @map("recipient_id")
+  recipient    User             @relation("NotificationRecipient", fields: [recipientId], references: [id], onDelete: Cascade)
+  actorId      String?          @map("actor_id")
+  actor        User?            @relation("NotificationActor", fields: [actorId], references: [id])
+  type         NotificationType
+  title        String
+  body         String
+  href         String?
+  jobId        String?          @map("job_id")
+  job          Job?             @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  diaryEntryId String?          @map("diary_entry_id")
+  diaryEntry   DiaryEntry?      @relation(fields: [diaryEntryId], references: [id], onDelete: Cascade)
+  readAt       DateTime?        @map("read_at")
+  createdAt    DateTime         @default(now()) @map("created_at")
+
+  @@index([recipientId])
+  @@index([actorId])
+  @@index([jobId])
+  @@index([diaryEntryId])
+  @@index([readAt])
+  @@index([recipientId, readAt])
+  @@map("notifications")
+}
+
+model DiaryEntry {
+  id           String         @id @default(cuid())
+  recipientId  String         @map("recipient_id")
+  recipient    User           @relation("DiaryRecipient", fields: [recipientId], references: [id], onDelete: Cascade)
+  authorId     String         @map("author_id")
+  author       User           @relation("DiaryAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  entry        String
+  createdAt    DateTime       @default(now()) @map("created_at")
+  updatedAt    DateTime       @updatedAt @map("updated_at")
+  notifications Notification[]
+
+  @@index([recipientId])
+  @@index([authorId])
+  @@map("diary_entries")
+}
