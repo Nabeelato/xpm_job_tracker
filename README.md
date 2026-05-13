@@ -16,13 +16,15 @@ Lightweight internal job tracking app for accounting/audit teams importing daily
 ## Local Setup
 
 1. Configure environment variables using `.env.example` as the reference.
+   `DATABASE_URL` is for commands you run on the host machine.
+   `DOCKER_DATABASE_URL` is for the `web` container to reach PostgreSQL over the Docker network.
 2. Start the full app stack:
 
 ```powershell
 docker compose up --build
 ```
 
-This starts PostgreSQL and the Next.js web app. The web container applies migrations, seeds departments/admin from environment variables, and serves the built frontend at `http://localhost:3000`.
+This starts PostgreSQL and the Next.js web app. The web container applies migrations on startup, optionally seeds departments/admin from environment variables when `RUN_SEED=true`, and serves the built frontend at `http://localhost:3000`.
 The first build needs Docker Hub access to pull the Node base image unless that image already exists locally.
 
 For database-only local development, start PostgreSQL:
@@ -31,7 +33,7 @@ For database-only local development, start PostgreSQL:
 docker compose up -d postgres
 ```
 
-The Docker database is exposed on host port `15432` to avoid collisions with any locally installed PostgreSQL service.
+The Docker database is bound to `127.0.0.1:${POSTGRES_PORT}` so it is reachable from the host machine without being exposed publicly.
 
 3. Create tables and seed departments/admin when running the frontend outside Docker:
 
