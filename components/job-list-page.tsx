@@ -31,7 +31,7 @@ export async function JobListPage({
   preset = {},
   basePath,
 }: {
-  title: string;
+  title?: string;
   description?: string;
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
   preset?: Preset;
@@ -44,10 +44,14 @@ export async function JobListPage({
     if (typeof value === "string" && value) params.set(key, value);
   }
 
+  const effectivePreset: Preset = preset;
+  const effectiveTitle = title ?? "";
+  const effectiveDescription = description;
+
   const page = toInt(searchParam(rawParams, "page"), 1);
   const pageSize = 25;
   const query = searchParam(rawParams, "q");
-  const department = preset.department ?? searchParam(rawParams, "department");
+  const department = effectivePreset.department ?? searchParam(rawParams, "department");
   const internalStatus = searchParam(rawParams, "internalStatus");
   const jobStateNumber = toInt(searchParam(rawParams, "jobStateNumber"), 0);
   const stateSet = searchParam(rawParams, "stateSet");
@@ -55,11 +59,12 @@ export async function JobListPage({
   const assignedUserId = searchParam(rawParams, "assignedUserId");
   const sourceManager = searchParam(rawParams, "sourceManager");
   const sourcePartner = searchParam(rawParams, "sourcePartner");
-  const missingParam = preset.missing === undefined ? searchParam(rawParams, "missing") : String(preset.missing);
+  const missingParam =
+    effectivePreset.missing === undefined ? searchParam(rawParams, "missing") : String(effectivePreset.missing);
   const archivedParam = searchParam(rawParams, "archived") ?? "false";
 
   const and: Prisma.JobWhereInput[] = [visibleJobsWhere(user)];
-  if (preset.myJobs) and.push({ assignments: { some: { userId: user.id, active: true } } });
+  if (effectivePreset.myJobs) and.push({ assignments: { some: { userId: user.id, active: true } } });
   if (query) {
     and.push({
       OR: [
@@ -71,24 +76,24 @@ export async function JobListPage({
   }
   if (department) and.push({ finalDepartment: { code: department } });
   if (internalStatus) and.push({ internalStatus: internalStatus as Prisma.EnumInternalStatusFilter<"Job"> });
-  if (jobStateNumber > 0 && (!preset.stateNumbers?.length || preset.stateNumbers.includes(jobStateNumber))) {
+  if (
+    jobStateNumber > 0 &&
+    (!effectivePreset.stateNumbers?.length || effectivePreset.stateNumbers.includes(jobStateNumber))
+  ) {
     and.push({ jobStateNumber });
-  } else if (preset.stateNumbers?.length) {
-    and.push({ jobStateNumber: { in: preset.stateNumbers } });
-  } else if (!preset.stateGroup && stateSet === "main") {
+  } else if (effectivePreset.stateNumbers?.length) {
+    and.push({ jobStateNumber: { in: effectivePreset.stateNumbers } });
+  } else if (!effectivePreset.stateGroup && stateSet === "main") {
     and.push({ jobStateNumber: { in: [2, 3, 4, 5, 6] } });
-  } else if (!preset.stateGroup && stateSet === "workflow") {
+  } else if (!effectivePreset.stateGroup && stateSet === "workflow") {
     and.push({ jobStateNumber: { in: [3, 4, 5, 6] } });
-  } else if (!preset.stateGroup && stateSet === "other") {
+  } else if (!effectivePreset.stateGroup && stateSet === "other") {
     and.push(stateGroupWhere("OTHER"));
   }
-  if (preset.stateGroup) and.push(stateGroupWhere(preset.stateGroup));
-  if (preset.staleHours) {
-    const threshold = new Date(Date.now() - preset.staleHours * 60 * 60 * 1000);
-    and.push({
-      jobStateNumber: { in: [3, 4, 5, 6] },
-      stateEnteredAt: { lte: threshold },
-    });
+  if (effectivePreset.stateGroup) and.push(stateGroupWhere(effectivePreset.stateGroup));
+  if (effectivePreset.staleHours) {
+    const threshold = new Date(Date.now() - effectivePreset.staleHours * 60 * 60 * 1000);
+    and.push({ jobStateNumber: { in: [3, 4, 5, 6] }, stateEnteredAt: { lte: threshold } });
   }
   if (priority) and.push({ priority: { contains: priority, mode: "insensitive" } });
   if (assignedUserId === "unassigned") {
@@ -131,26 +136,39 @@ export async function JobListPage({
       take: pageSize,
     }),
     prisma.job.count({ where }),
-    prisma.department.findMany({ where: { active: true }, orderBy: { code: "asc" }, select: { id: true, code: true, name: true } }),
+    prisma.department.findMany({
+      where: { active: true },
+      orderBy: { code: "asc" },
+      select: { id: true, code: true, name: true },
+    }),
     prisma.user.findMany({ where: { active: true }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
   ]);
 
   return (
     <>
-      <PageHeader title={title} description={description} />
-      <JobFilterTabs basePath={basePath} config={preset.tabs} departments={departments} params={params} users={users} />
+      <PageHeader description={effectiveDescription} title={effectiveTitle} />
+      <JobFilterTabs
+        basePath={basePath}
+        config={effectivePreset.tabs}
+        departments={departments}
+        params={params}
+        users={users}
+      />
       <JobFilters
+        departments={departments}
         hidden={{
-          assignedUserId: preset.tabs?.assignees,
-          department: preset.tabs?.departments,
-          jobStateNumber: Boolean(preset.tabs?.states || preset.tabs?.stateSets),
+          assignedUserId: effectivePreset.tabs?.assignees,
+          department: effectivePreset.tabs?.departments,
+          jobStateNumber: Boolean(effectivePreset.tabs?.states || effectivePreset.tabs?.stateSets),
         }}
         params={params}
-        departments={departments}
         users={users}
       />
       {jobs.length === 0 ? (
-        <EmptyState title="No jobs found" description="Try adjusting the filters or uploading the latest source file." />
+        <EmptyState
+          description="Try adjusting the filters or uploading the latest source file."
+          title="No jobs found"
+        />
       ) : (
         <div className="rounded-lg border bg-white">
           <Table>
@@ -178,7 +196,10 @@ export async function JobListPage({
                     key={job.id}
                   >
                     <TableCell className="font-medium">
-                      <Link className={cn("text-primary hover:underline", staleLevel === "critical" && "text-white")} href={`/jobs/${job.id}`}>
+                      <Link
+                        className={cn("text-primary hover:underline", staleLevel === "critical" && "text-white")}
+                        href={`/jobs/${job.id}`}
+                      >
                         {job.jobIdFromExcel}
                       </Link>
                     </TableCell>
@@ -193,7 +214,9 @@ export async function JobListPage({
                     </TableCell>
                     <TableCell className="max-w-xs">
                       <div className="flex flex-col gap-1">
-                        <span className={cn("text-muted-foreground", staleLevel === "critical" && "text-red-100")}>{job.xpmState ?? "-"}</span>
+                        <span className={cn("text-muted-foreground", staleLevel === "critical" && "text-red-100")}>
+                          {job.xpmState ?? "-"}
+                        </span>
                         {staleLevel !== "none" ? (
                           <Badge variant={staleLevel === "critical" ? "destructive" : "warning"}>
                             {staleLevel === "critical" ? "48h+ unchanged" : "24h+ unchanged"}
@@ -205,8 +228,12 @@ export async function JobListPage({
                     <TableCell>
                       <StatusBadge value={job.internalStatus} />
                     </TableCell>
-                    <TableCell className={cn("text-muted-foreground", staleLevel === "critical" && "text-red-100")}>
-                      {job.assignments.length ? job.assignments.map((assignment) => assignment.user.name).join(", ") : "Unassigned"}
+                    <TableCell
+                      className={cn("text-muted-foreground", staleLevel === "critical" && "text-red-100")}
+                    >
+                      {job.assignments.length
+                        ? job.assignments.map((a) => a.user.name).join(", ")
+                        : "Unassigned"}
                     </TableCell>
                   </TableRow>
                 );

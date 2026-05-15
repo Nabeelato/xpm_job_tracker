@@ -10,6 +10,7 @@ export function JobFilters({
   params,
   departments,
   users,
+  preserveParams = {},
 }: {
   hidden?: {
     assignedUserId?: boolean;
@@ -19,9 +20,13 @@ export function JobFilters({
   params: URLSearchParams;
   departments: Array<{ id: string; code: string; name: string }>;
   users: Array<{ id: string; name: string }>;
+  preserveParams?: Record<string, string>;
 }) {
   return (
     <form className="mb-4 grid gap-3 rounded-lg border bg-white p-4 md:grid-cols-3 xl:grid-cols-6">
+      {Object.entries(preserveParams).map(([k, v]) => (
+        <input key={k} name={k} type="hidden" value={v} />
+      ))}
       {hidden.department && params.get("department") ? <input name="department" type="hidden" value={params.get("department") ?? ""} /> : null}
       {hidden.jobStateNumber && params.get("jobStateNumber") ? <input name="jobStateNumber" type="hidden" value={params.get("jobStateNumber") ?? ""} /> : null}
       {hidden.assignedUserId && params.get("assignedUserId") ? <input name="assignedUserId" type="hidden" value={params.get("assignedUserId") ?? ""} /> : null}

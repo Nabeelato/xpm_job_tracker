@@ -1,54 +1,62 @@
 import { PageHeader } from "@/components/page-header";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Select } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
-import { assignmentRoles } from "@/lib/constants";
+import { BulkAssignClient } from "@/components/bulk-assign-client";
 import { prisma } from "@/lib/db";
-import { requireRole } from "@/lib/rbac";
-import { titleCaseEnum } from "@/lib/utils";
-import { bulkAssignJobsAction } from "../../jobs/actions";
+import { requireRole, visibleJobsWhere } from "@/lib/rbac";
 
 export default async function BulkAssignmentsPage() {
   const user = await requireRole(["ADMIN", "MANAGER"]);
-  const users = await prisma.user.findMany({
-    where:
-      user.role === "MANAGER"
-        ? { active: true, departmentId: user.departmentId ?? "__none__", role: { in: ["SUPERVISOR", "STAFF"] } }
-        : { active: true },
-    orderBy: { name: "asc" },
-    select: { id: true, name: true, role: true },
-  });
+
+  const [jobs, users] = await Promise.all([
+    prisma.job.findMany({
+      where: { AND: [{ archived: false }, visibleJobsWhere(user)] },
+      select: {
+        id: true,
+        jobIdFromExcel: true,
+        jobName: true,
+        internalStatus: true,
+        client: { select: { displayName: true } },
+        finalDepartment: { select: { code: true } },
+        assignments: {
+          where: { active: true },
+          select: { user: { select: { name: true } } },
+        },
+      },
+      orderBy: [{ internalStatus: "asc" }, { updatedAt: "desc" }],
+      take: 1000,
+    }),
+    prisma.user.findMany({
+      where:
+        user.role === "MANAGER"
+          ? { active: true, departmentId: user.departmentId ?? "__none__", role: { in: ["SUPERVISOR", "STAFF"] } }
+          : { active: true },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true, role: true },
+    }),
+  ]);
+
+  const jobsForClient = jobs.map((job) => ({
+    id: job.id,
+    jobIdFromExcel: job.jobIdFromExcel,
+    clientName: job.client.displayName,
+    jobName: job.jobName,
+    departmentCode: job.finalDepartment?.code ?? null,
+    internalStatus: job.internalStatus,
+    assigneeNames: job.assignments.map((a) => a.user.name).filter((n): n is string => Boolean(n)),
+  }));
+
+  const usersForClient = users.map((u) => ({
+    id: u.id,
+    name: u.name,
+    role: u.role,
+  }));
 
   return (
     <>
-      <PageHeader description="Paste Job Nos separated by commas or new lines." title="Bulk Assign Jobs" />
-      <Card className="max-w-2xl">
-        <CardHeader>
-          <CardTitle>Bulk Assignment</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <form action={bulkAssignJobsAction} className="space-y-4">
-            <Textarea name="jobNumbers" placeholder="J000008&#10;J000014&#10;J001500" required />
-            <Select name="userId" required>
-              <option value="">Select user</option>
-              {users.map((user) => (
-                <option key={user.id} value={user.id}>
-                  {user.name} ({user.role})
-                </option>
-              ))}
-            </Select>
-            <Select name="assignmentRole" required>
-              {assignmentRoles.map((role) => (
-                <option key={role} value={role}>
-                  {titleCaseEnum(role)}
-                </option>
-              ))}
-            </Select>
-            <Button type="submit">Assign jobs</Button>
-          </form>
-        </CardContent>
-      </Card>
+      <PageHeader
+        description="Tick checkboxes to select jobs, then choose a user and role to assign. Use the search box or paste Job IDs to filter quickly."
+        title="Bulk Assign Jobs"
+      />
+      <BulkAssignClient jobs={jobsForClient} users={usersForClient} />
     </>
   );
 }

@@ -2,6 +2,24 @@ import { sanitizeText } from "@/lib/import/normalize";
 
 export type DepartmentCode = "VAT" | "SOFTWARE_BK" | "BK" | "AFS" | "QC" | "UNCLASSIFIED";
 
+// Maps manager names from the import file to their department.
+// Matching is done on first name only so partial values like "Haseeb" still match.
+const managerRules: Array<{ code: DepartmentCode; patterns: RegExp[] }> = [
+  { code: "BK", patterns: [/\bhaseeb\b/i] },
+  { code: "SOFTWARE_BK", patterns: [/\btaaha\b/i] },
+  { code: "AFS", patterns: [/\bmaaz\b/i] },
+  { code: "VAT", patterns: [/\bfaizan\b/i] },
+];
+
+export function detectDepartmentFromManager(managerName: string | null | undefined): DepartmentCode | null {
+  if (!managerName) return null;
+  const name = sanitizeText(managerName);
+  for (const rule of managerRules) {
+    if (rule.patterns.some((pattern) => pattern.test(name))) return rule.code;
+  }
+  return null;
+}
+
 const rules: Array<{ code: DepartmentCode; patterns: RegExp[] }> = [
   {
     code: "VAT",

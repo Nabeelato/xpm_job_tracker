@@ -2,7 +2,11 @@ import { JobListPage } from "@/components/job-list-page";
 
 const workflowStates = [3, 4, 5, 6];
 
-export default function MyJobsPage({ searchParams }: { searchParams?: Promise<Record<string, string | string[] | undefined>> }) {
+export default function MyJobsPage({
+  searchParams,
+}: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}) {
   return (
     <JobListPage
       basePath="/jobs/my"

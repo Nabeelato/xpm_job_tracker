@@ -1,8 +1,7 @@
 import Link from "next/link";
 import { Menu, X } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { NavLinks } from "@/components/nav-links";
 import { buttonVariants } from "@/components/ui/button";
-import { navSections } from "@/components/nav-config";
 import { cn } from "@/lib/utils";
 
 export function MobileNav({ unreadCount }: { unreadCount: number }) {
@@ -33,24 +32,7 @@ export function MobileNav({ unreadCount }: { unreadCount: number }) {
             </label>
           </div>
           <nav className="flex-1 space-y-4 overflow-y-auto p-3">
-            {navSections.map((section) => (
-              <div className="space-y-1" key={section.label}>
-                <div className="px-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">{section.label}</div>
-                <div className="space-y-1">
-                  {section.items.map((item) => (
-                    <Link
-                      className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
-                      href={item.href}
-                      key={item.href}
-                    >
-                      <item.icon className="h-4 w-4" />
-                      <span className="flex-1">{item.label}</span>
-                      {item.href === "/notifications" && unreadCount > 0 ? <Badge variant="destructive">{unreadCount}</Badge> : null}
-                    </Link>
-                  ))}
-                </div>
-              </div>
-            ))}
+            <NavLinks unreadCount={unreadCount} />
           </nav>
         </div>
       </div>

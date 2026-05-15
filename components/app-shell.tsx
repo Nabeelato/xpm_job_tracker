@@ -1,8 +1,7 @@
 import Link from "next/link";
 import { MobileNav } from "@/components/mobile-nav";
-import { navSections } from "@/components/nav-config";
+import { NavLinks } from "@/components/nav-links";
 import { LogoutButton } from "@/components/logout-button";
-import { Badge } from "@/components/ui/badge";
 import { prisma } from "@/lib/db";
 import type { AppSessionUser } from "@/lib/rbac";
 
@@ -18,24 +17,7 @@ export async function AppShell({ user, children }: { user: AppSessionUser; child
           </Link>
         </div>
         <nav className="space-y-4 p-3">
-          {navSections.map((section) => (
-            <div className="space-y-1" key={section.label}>
-              <div className="px-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">{section.label}</div>
-              <div className="space-y-1">
-                {section.items.map((item) => (
-                  <Link
-                    className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
-                    href={item.href}
-                    key={item.href}
-                  >
-                    <item.icon className="h-4 w-4" />
-                    {item.label}
-                    {item.href === "/notifications" && unreadCount > 0 ? <Badge variant="destructive">{unreadCount}</Badge> : null}
-                  </Link>
-                ))}
-              </div>
-            </div>
-          ))}
+          <NavLinks unreadCount={unreadCount} />
         </nav>
       </aside>
       <div className="lg:pl-64">

@@ -290,6 +290,66 @@ export async function deactivateAssignmentAction(formData: FormData) {
   revalidatePath("/assignments");
 }
 
+export async function bulkAssignByIdsAction(formData: FormData) {
+  const user = await requireUser();
+  if (!canAssignJobs(user.role)) redirect("/dashboard");
+
+  const jobIds = String(formData.get("jobIds") ?? "")
+    .split(",")
+    .map((id) => id.trim())
+    .filter(Boolean);
+  const userId = String(formData.get("userId") ?? "");
+  const assignmentRole = String(formData.get("assignmentRole") ?? "") as AssignmentRole;
+  if (!jobIds.length || !userId || !Object.values(AssignmentRole).includes(assignmentRole)) return;
+
+  const assignee = await prisma.user.findUnique({ where: { id: userId } });
+  if (!assignee?.active) return;
+  if (!managerCanAssignTo(user, assignee)) redirect("/dashboard");
+
+  const jobs = await prisma.job.findMany({
+    where: { AND: [{ id: { in: jobIds } }, visibleJobsWhere(user)] },
+    include: { assignments: { where: { active: true }, select: { userId: true } } },
+  });
+
+  await prisma.$transaction(async (tx) => {
+    for (const job of jobs) {
+      if (!managerCanManageJobAssignment(user, job)) continue;
+      const existing = await tx.jobAssignment.findFirst({
+        where: { jobId: job.id, userId, assignmentRole, assignmentSource: AssignmentSource.MANUAL, active: true },
+      });
+      if (!existing) {
+        await tx.jobAssignment.create({
+          data: {
+            jobId: job.id,
+            userId,
+            assignmentRole,
+            assignmentSource: AssignmentSource.MANUAL,
+            assignedById: user.id,
+          },
+        });
+        await createNotification(tx, {
+          recipientId: userId,
+          actorId: user.id,
+          type: NotificationType.ASSIGNMENT_ADDED,
+          title: "Job assigned",
+          body: `${user.name ?? "A manager"} assigned ${job.jobIdFromExcel} to you.`,
+          href: `/jobs/${job.id}`,
+          jobId: job.id,
+        });
+      }
+      if (job.internalStatus === InternalStatus.UNASSIGNED) {
+        await tx.job.update({
+          where: { id: job.id },
+          data: { internalStatus: InternalStatus.ASSIGNED },
+        });
+      }
+    }
+  });
+
+  revalidatePath("/assignments");
+  revalidatePath("/jobs");
+}
+
 export async function bulkAssignJobsAction(formData: FormData) {
   const user = await requireUser();
   if (!canAssignJobs(user.role)) redirect("/dashboard");
