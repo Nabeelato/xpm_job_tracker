@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { buttonVariants } from "@/components/ui/button";
 import { jobStateOptions } from "@/lib/constants";
 import { cn } from "@/lib/utils";
@@ -47,7 +46,8 @@ function TabGroup({
       <div className="pt-1 text-xs font-semibold uppercase text-muted-foreground">{label}</div>
       <div className="flex gap-2 overflow-x-auto pb-1">
         {options.map((option) => (
-          <Link
+          <a
+            aria-current={option.active ? "page" : undefined}
             className={cn(
               buttonVariants({ variant: option.active ? "default" : "outline", size: "sm" }),
               "shrink-0",
@@ -56,7 +56,7 @@ function TabGroup({
             key={`${label}-${option.label}`}
           >
             {option.label}
-          </Link>
+          </a>
         ))}
       </div>
     </div>

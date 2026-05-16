@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -27,12 +26,12 @@ export function Pagination({
         Page {page} of {lastPage} · {total} records
       </div>
       <div className="flex gap-2">
-        <Link className={cn(buttonVariants({ variant: "outline", size: "sm" }), page <= 1 && "pointer-events-none opacity-50")} href={`${basePath}?${previous}`}>
+        <a className={cn(buttonVariants({ variant: "outline", size: "sm" }), page <= 1 && "pointer-events-none opacity-50")} href={`${basePath}?${previous}`}>
           Previous
-        </Link>
-        <Link className={cn(buttonVariants({ variant: "outline", size: "sm" }), page >= lastPage && "pointer-events-none opacity-50")} href={`${basePath}?${next}`}>
+        </a>
+        <a className={cn(buttonVariants({ variant: "outline", size: "sm" }), page >= lastPage && "pointer-events-none opacity-50")} href={`${basePath}?${next}`}>
           Next
-        </Link>
+        </a>
       </div>
     </div>
   );
