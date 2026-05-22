@@ -56,6 +56,12 @@ export default async function ImportPreviewPage({ params }: { params: Promise<{ 
           newStateNumber: true,
           stateComparisonCategory: true,
           errorMessage: true,
+          matchedJob: {
+            select: {
+              jobName: true,
+              client: { select: { displayName: true } },
+            },
+          },
         },
         orderBy: { rowNumber: "asc" },
       },
@@ -93,7 +99,23 @@ export default async function ImportPreviewPage({ params }: { params: Promise<{ 
           )}
         </CardContent>
       </Card>
-      <ImportResultSections rows={batch.rows} />
+      <ImportResultSections
+        rows={batch.rows.map((row) => ({
+          id: row.id,
+          rowNumber: row.rowNumber,
+          action: row.action,
+          detectedJobId: row.detectedJobId,
+          detectedClientName: row.detectedClientName,
+          detectedJobName: row.detectedJobName,
+          previousXpmState: row.previousXpmState,
+          newXpmState: row.newXpmState,
+          previousStateNumber: row.previousStateNumber,
+          newStateNumber: row.newStateNumber,
+          stateComparisonCategory: row.stateComparisonCategory,
+          matchedJobName: row.matchedJob?.jobName ?? null,
+          matchedClientName: row.matchedJob?.client.displayName ?? null,
+        }))}
+      />
     </>
   );
 }

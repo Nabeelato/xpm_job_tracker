@@ -10,6 +10,7 @@ const uploadErrors: Record<string, string> = {
   "missing-download-date": "Enter the date when the file was downloaded from XPM.",
   "download-date-past": "The XPM download date cannot be earlier than today's upload date. Please download a fresh file from XPM.",
   "download-date-future": "The XPM download date cannot be after today's upload date.",
+  "download-date-not-newer": "XPM file date must be later than the previous import's XPM date.",
 };
 
 function todayInputDate() {
@@ -60,19 +61,11 @@ export function ImportUploadForm({
       }}
     >
       {errorMessage ? <p className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">{errorMessage}</p> : null}
-      <div className="grid gap-4 sm:grid-cols-2">
-        <div className="space-y-2">
-          <label className="text-sm font-medium" htmlFor="currentUploadDate">
-            Current upload date
-          </label>
-          <Input id="currentUploadDate" readOnly type="date" value={today} />
-        </div>
-        <div className="space-y-2">
-          <label className="text-sm font-medium" htmlFor="xpmDownloadedAt">
-            When did you download the file from XPM?
-          </label>
-          <Input defaultValue={today} id="xpmDownloadedAt" max={today} name="xpmDownloadedAt" ref={dateInputRef} required type="date" />
-        </div>
+      <div className="space-y-2">
+        <label className="text-sm font-medium" htmlFor="xpmDownloadedAt">
+          Current upload
+        </label>
+        <Input defaultValue={today} id="xpmDownloadedAt" max={today} name="xpmDownloadedAt" ref={dateInputRef} required type="date" />
       </div>
       <div className="space-y-2">
         <label className="text-sm font-medium" htmlFor="file">

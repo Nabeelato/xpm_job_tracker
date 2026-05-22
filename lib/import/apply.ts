@@ -70,6 +70,19 @@ export async function applyImportBatch(importBatchId: string, changedById: strin
       if (!batch) throw new Error("Import batch not found.");
       if (batch.status !== ImportStatus.STAGED) throw new Error("Only staged imports can be confirmed.");
 
+      const lastApplied = await tx.importBatch.findFirst({
+        where: { status: ImportStatus.APPLIED, id: { not: batch.id }, xpmDownloadedAt: { not: null } },
+        orderBy: { xpmDownloadedAt: "desc" },
+        select: { xpmDownloadedAt: true },
+      });
+      if (
+        lastApplied?.xpmDownloadedAt &&
+        batch.xpmDownloadedAt &&
+        batch.xpmDownloadedAt <= lastApplied.xpmDownloadedAt
+      ) {
+        throw new Error("This XPM file is not newer than the previously applied import.");
+      }
+
       const departments = departmentMap(await tx.department.findMany());
 
       const importableRows = batch.rows.filter(
