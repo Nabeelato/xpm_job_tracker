@@ -2,8 +2,7 @@ import { Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
-import { internalStatuses, jobStateOptions } from "@/lib/constants";
-import { titleCaseEnum } from "@/lib/utils";
+import { jobStateOptions } from "@/lib/constants";
 
 export function JobFilters({
   hidden = {},
@@ -45,14 +44,6 @@ export function JobFilters({
           ))}
         </Select>
       )}
-      <Select defaultValue={params.get("internalStatus") ?? ""} name="internalStatus">
-        <option value="">All internal statuses</option>
-        {internalStatuses.map((status) => (
-          <option key={status} value={status}>
-            {titleCaseEnum(status)}
-          </option>
-        ))}
-      </Select>
       {hidden.jobStateNumber ? null : (
         <Select defaultValue={params.get("jobStateNumber") ?? ""} name="jobStateNumber">
           <option value="">Any job state</option>

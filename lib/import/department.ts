@@ -1,6 +1,22 @@
+import type { ClientCategory } from "@prisma/client";
 import { sanitizeText } from "@/lib/import/normalize";
 
 export type DepartmentCode = "VAT" | "SOFTWARE_BK" | "BK" | "AFS" | "QC" | "UNCLASSIFIED";
+
+// Manager-name rules that classify the job's client. Used during import to auto-mark client.category.
+// Full-name patterns (not first-name only) so "Taaha Sheikh" doesn't collide with "Taaha Imran".
+const clientCategoryManagerRules: Array<{ category: ClientCategory; patterns: RegExp[] }> = [
+  { category: "SOFTWARE", patterns: [/\btaaha\s+sheikh\b/i] },
+];
+
+export function detectClientCategoryFromManager(managerName: string | null | undefined): ClientCategory | null {
+  if (!managerName) return null;
+  const name = sanitizeText(managerName);
+  for (const rule of clientCategoryManagerRules) {
+    if (rule.patterns.some((pattern) => pattern.test(name))) return rule.category;
+  }
+  return null;
+}
 
 // Maps manager names from the import file to their department.
 // Matching is done on first name only so partial values like "Haseeb" still match.

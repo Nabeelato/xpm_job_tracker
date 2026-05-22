@@ -7,10 +7,8 @@ import {
   Building2,
   CheckCircle2,
   CircleX,
-  Clock,
   FileUp,
   Home,
-  SquareCheckBig,
   User,
   Users,
 } from "lucide-react";
@@ -38,7 +36,6 @@ export const navSections: NavSection[] = [
     items: [
       { href: "/jobs", label: "All Jobs", icon: BriefcaseBusiness },
       { href: "/jobs/my", label: "My Jobs", icon: User },
-      { href: "/jobs/stale-48", label: "Stale 48h+", icon: Clock },
       { href: "/jobs/completed", label: "Completed", icon: CheckCircle2 },
       { href: "/jobs/cancelled", label: "Cancelled", icon: CircleX },
     ],
@@ -48,7 +45,6 @@ export const navSections: NavSection[] = [
     items: [
       { href: "/clients", label: "Clients", icon: Building2 },
       { href: "/imports", label: "Imports", icon: FileUp },
-      { href: "/assignments/bulk", label: "Job Assignments", icon: SquareCheckBig },
       { href: "/notifications", label: "Notifications", icon: Bell },
       { href: "/diary", label: "Diary", icon: BookOpen },
     ],

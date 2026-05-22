@@ -1,4 +1,4 @@
-import type { AssignmentRole, InternalStatus, UserRole } from "@prisma/client";
+import type { AssignmentRole, ClientCategory, InternalStatus, UserRole } from "@prisma/client";
 
 export const requiredUploadHeaders = ["[Job] Job No.", "[Client] Client", "[Job] Name"] as const;
 
@@ -49,8 +49,15 @@ export const internalStatuses: InternalStatus[] = [
   "ARCHIVED",
 ];
 
-export const assignmentRoles: AssignmentRole[] = ["PRIMARY", "REVIEWER", "SUPERVISOR", "HELPER"];
+export const assignmentRoles: AssignmentRole[] = ["MANAGER", "SUPERVISOR"];
 
 export const userRoles: UserRole[] = ["ADMIN", "MANAGER", "SUPERVISOR", "STAFF"];
+
+export const clientCategories: ClientCategory[] = ["SOFTWARE", "MANUAL"];
+
+export const clientCategoryLabels: Record<ClientCategory, string> = {
+  SOFTWARE: "Software Client",
+  MANUAL: "Manual Client",
+};
 
 export const maxUploadSizeBytes = 15 * 1024 * 1024;

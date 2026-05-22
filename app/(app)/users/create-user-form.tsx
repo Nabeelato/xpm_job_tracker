@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useRef, useState } from "react";
+import { useActionState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
@@ -20,16 +20,12 @@ export function CreateUserForm({
 }) {
   const [state, formAction, pending] = useActionState<ActionResult | null, FormData>(createUserAction, null);
   const formRef = useRef<HTMLFormElement>(null);
-  const [departmentId, setDepartmentId] = useState("");
 
   useEffect(() => {
     if (state?.ok) {
       formRef.current?.reset();
-      setDepartmentId("");
     }
   }, [state]);
-
-  const hasDepartment = departmentId !== "";
 
   return (
     <form action={formAction} className="space-y-3" ref={formRef}>
@@ -43,11 +39,7 @@ export function CreateUserForm({
           </option>
         ))}
       </Select>
-      <Select
-        name="departmentId"
-        onChange={(e) => setDepartmentId(e.currentTarget.value)}
-        value={departmentId}
-      >
+      <Select name="departmentId" defaultValue="">
         <option value="">No department</option>
         {departments.map((department) => (
           <option key={department.id} value={department.id}>
@@ -63,20 +55,6 @@ export function CreateUserForm({
           </option>
         ))}
       </Select>
-      <label className="flex items-start gap-2 text-sm">
-        <input
-          className="mt-0.5"
-          disabled={!hasDepartment}
-          name="autoAssign"
-          type="checkbox"
-        />
-        <span>
-          Auto-assign new jobs from this department to this user
-          {!hasDepartment && (
-            <span className="block text-xs text-muted-foreground">Requires a department to be selected</span>
-          )}
-        </span>
-      </label>
       {state && !state.ok && (
         <p className="text-sm text-destructive">{state.error}</p>
       )}

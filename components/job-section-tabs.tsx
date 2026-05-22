@@ -6,7 +6,6 @@ import { cn } from "@/lib/utils";
 export const JOB_TABS = [
   { key: "all",       label: "All Jobs"   },
   { key: "my",        label: "My Jobs"    },
-  { key: "stale",     label: "Stale 48h+" },
   { key: "completed", label: "Completed"  },
   { key: "cancelled", label: "Cancelled"  },
 ] as const;
@@ -16,7 +15,6 @@ export type JobTabKey = (typeof JOB_TABS)[number]["key"];
 const jobTabHref: Record<JobTabKey, string> = {
   all: "/jobs",
   my: "/jobs/my",
-  stale: "/jobs/stale-48",
   completed: "/jobs/completed",
   cancelled: "/jobs/cancelled",
 };

@@ -1,4 +1,4 @@
-import { Prisma } from "@prisma/client";
+import { Prisma, type ClientCategory } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import type { AppSessionUser } from "@/lib/rbac";
 
@@ -16,7 +16,6 @@ export type DashboardMetrics = {
   missingJobs: number;
   completedJobs: number;
   cancelledJobs: number;
-  staleJobs: number;
 };
 
 export type ClientFilter =
@@ -30,17 +29,19 @@ export type ClientFilter =
   | "bk_afs"
   | "all_3"
   | "unclassified"
-  | "stale_48"
-  | "missing";
+  | "missing"
+  | "category_software"
+  | "category_manual"
+  | "category_uncategorized";
 
 export type ClientSummary = {
   id: string;
   displayName: string;
+  category: ClientCategory | null;
   totalJobs: number;
   activeJobs: number;
   completedJobs: number;
   missingJobs: number;
-  stale48Jobs: number;
   departmentCounts: Record<string, number>;
 };
 
@@ -51,11 +52,11 @@ type DashboardMetricsRow = Record<keyof DashboardMetrics, CountValue>;
 type ClientSummaryRow = {
   id: string;
   displayName: string;
+  category: ClientCategory | null;
   totalJobs: CountValue;
   activeJobs: CountValue;
   completedJobs: CountValue;
   missingJobs: CountValue;
-  stale48Jobs: CountValue;
   vatJobs: CountValue;
   softwareBkJobs: CountValue;
   bkJobs: CountValue;
@@ -92,14 +93,15 @@ function clientFilterSql(filter?: ClientFilter | string | null) {
   if (filter === "bk_afs") return Prisma.sql`WHERE "bkJobs" > 0 AND "afsJobs" > 0`;
   if (filter === "all_3") return Prisma.sql`WHERE "vatJobs" > 0 AND "bkJobs" > 0 AND "afsJobs" > 0`;
   if (filter === "unclassified") return Prisma.sql`WHERE "unclassifiedJobs" > 0`;
-  if (filter === "stale_48") return Prisma.sql`WHERE "stale48Jobs" > 0`;
   if (filter === "missing") return Prisma.sql`WHERE "missingJobs" > 0`;
+  if (filter === "category_software") return Prisma.sql`WHERE "category" = 'SOFTWARE'`;
+  if (filter === "category_manual") return Prisma.sql`WHERE "category" = 'MANUAL'`;
+  if (filter === "category_uncategorized") return Prisma.sql`WHERE "category" IS NULL`;
 
   return Prisma.empty;
 }
 
 export async function getDashboardMetrics(user: AppSessionUser): Promise<DashboardMetrics> {
-  const staleThreshold = new Date(Date.now() - 48 * 60 * 60 * 1000);
   const [row] = await prisma.$queryRaw<DashboardMetricsRow[]>(Prisma.sql`
     WITH visible_jobs AS (
       SELECT
@@ -139,11 +141,7 @@ export async function getDashboardMetrics(user: AppSessionUser): Promise<Dashboa
       ))::int AS "unassignedJobs",
       (COUNT(*) FILTER (WHERE missing_from_latest_import = TRUE))::int AS "missingJobs",
       (COUNT(*) FILTER (WHERE job_state_number = 11))::int AS "completedJobs",
-      (COUNT(*) FILTER (WHERE job_state_number = 12))::int AS "cancelledJobs",
-      (COUNT(*) FILTER (
-        WHERE job_state_number IN (3, 4, 5, 6)
-          AND state_entered_at <= ${staleThreshold}
-      ))::int AS "staleJobs"
+      (COUNT(*) FILTER (WHERE job_state_number = 12))::int AS "cancelledJobs"
     FROM visible_jobs
   `);
 
@@ -161,7 +159,6 @@ export async function getDashboardMetrics(user: AppSessionUser): Promise<Dashboa
     missingJobs: toNumber(row?.missingJobs),
     completedJobs: toNumber(row?.completedJobs),
     cancelledJobs: toNumber(row?.cancelledJobs),
-    staleJobs: toNumber(row?.staleJobs),
   };
 }
 
@@ -178,7 +175,6 @@ export async function getClientSummaries({
   page: number;
   pageSize: number;
 }) {
-  const staleThreshold = new Date(Date.now() - 48 * 60 * 60 * 1000);
   const offset = Math.max(0, (page - 1) * pageSize);
   const searchPattern = query ? `%${query}%` : "";
   const searchSql = query
@@ -191,6 +187,7 @@ export async function getClientSummaries({
       SELECT
         c.id,
         c.display_name,
+        c.category,
         j.archived,
         j.internal_status::text AS internal_status,
         j.missing_from_latest_import,
@@ -207,14 +204,11 @@ export async function getClientSummaries({
       SELECT
         id,
         display_name AS "displayName",
+        category,
         COUNT(*)::int AS "totalJobs",
         (COUNT(*) FILTER (WHERE archived = FALSE))::int AS "activeJobs",
         (COUNT(*) FILTER (WHERE internal_status = 'COMPLETED'))::int AS "completedJobs",
         (COUNT(*) FILTER (WHERE missing_from_latest_import = TRUE))::int AS "missingJobs",
-        (COUNT(*) FILTER (
-          WHERE job_state_number IN (3, 4, 5, 6)
-            AND state_entered_at <= ${staleThreshold}
-        ))::int AS "stale48Jobs",
         (COUNT(*) FILTER (WHERE department_code = 'VAT' AND job_state_number IN (3, 4, 5, 6)))::int AS "vatJobs",
         (COUNT(*) FILTER (WHERE department_code = 'SOFTWARE_BK' AND job_state_number IN (3, 4, 5, 6)))::int AS "softwareBkJobs",
         (COUNT(*) FILTER (WHERE department_code = 'BK' AND job_state_number IN (3, 4, 5, 6)))::int AS "bkJobs",
@@ -222,7 +216,7 @@ export async function getClientSummaries({
         (COUNT(*) FILTER (WHERE department_code = 'QC' AND job_state_number IN (3, 4, 5, 6)))::int AS "qcJobs",
         (COUNT(*) FILTER (WHERE department_code = 'UNCLASSIFIED' AND job_state_number IN (3, 4, 5, 6)))::int AS "unclassifiedJobs"
       FROM visible_client_jobs
-      GROUP BY id, display_name
+      GROUP BY id, display_name, category
     ),
     filtered AS (
       SELECT *
@@ -243,11 +237,11 @@ export async function getClientSummaries({
     summaries: rows.map((row): ClientSummary => ({
       id: row.id,
       displayName: row.displayName,
+      category: row.category,
       totalJobs: toNumber(row.totalJobs),
       activeJobs: toNumber(row.activeJobs),
       completedJobs: toNumber(row.completedJobs),
       missingJobs: toNumber(row.missingJobs),
-      stale48Jobs: toNumber(row.stale48Jobs),
       departmentCounts: {
         VAT: toNumber(row.vatJobs),
         SOFTWARE_BK: toNumber(row.softwareBkJobs),

@@ -18,10 +18,6 @@ export default async function UsersPage() {
         departmentId: true,
         supervisorId: true,
         active: true,
-        defaultDepartmentAssignments: {
-          where: { active: true },
-          select: { departmentId: true },
-        },
       },
       orderBy: { name: "asc" },
     }),
@@ -55,9 +51,6 @@ export default async function UsersPage() {
     departmentId: user.departmentId,
     supervisorId: user.supervisorId,
     active: user.active,
-    isAutoAssignee:
-      Boolean(user.departmentId) &&
-      user.defaultDepartmentAssignments.some((d) => d.departmentId === user.departmentId),
     activeAssignmentCount: countByUser.get(user.id) ?? 0,
   }));
 

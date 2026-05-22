@@ -242,6 +242,86 @@ export async function assignJobAction(formData: FormData) {
   revalidatePath("/jobs");
 }
 
+export async function setJobRoleAssignmentAction(formData: FormData) {
+  const user = await requireUser();
+  if (!canAssignJobs(user.role)) redirect("/dashboard");
+
+  const jobId = String(formData.get("jobId") ?? "");
+  const userId = String(formData.get("userId") ?? "");
+  const assignmentRole = String(formData.get("assignmentRole") ?? "") as AssignmentRole;
+  if (!jobId || !Object.values(AssignmentRole).includes(assignmentRole)) return;
+
+  const job = await prisma.job.findUnique({
+    where: { id: jobId },
+    include: { assignments: { where: { active: true }, select: { id: true, userId: true, assignmentRole: true } } },
+  });
+  if (!job) return;
+  if (!managerCanManageJobAssignment(user, job)) redirect("/jobs/my");
+
+  const existingForRole = job.assignments.filter((a) => a.assignmentRole === assignmentRole);
+  const alreadySet = userId && existingForRole.some((a) => a.userId === userId);
+  if (alreadySet) return;
+
+  let assignee = null as Awaited<ReturnType<typeof prisma.user.findUnique>> | null;
+  if (userId) {
+    assignee = await prisma.user.findUnique({ where: { id: userId } });
+    if (!assignee?.active) return;
+    if (!managerCanAssignTo(user, assignee)) redirect("/dashboard");
+  }
+
+  await prisma.$transaction(async (tx) => {
+    if (existingForRole.length) {
+      await tx.jobAssignment.updateMany({
+        where: { id: { in: existingForRole.map((a) => a.id) } },
+        data: { active: false },
+      });
+      for (const prev of existingForRole) {
+        await createNotification(tx, {
+          recipientId: prev.userId,
+          actorId: user.id,
+          type: NotificationType.ASSIGNMENT_REMOVED,
+          title: "Assignment removed",
+          body: `${user.name ?? "A manager"} removed your ${assignmentRole.toLowerCase()} assignment from ${job.jobIdFromExcel}.`,
+          href: `/jobs/${job.id}`,
+          jobId: job.id,
+        });
+      }
+    }
+
+    if (userId && assignee) {
+      await tx.jobAssignment.create({
+        data: {
+          jobId,
+          userId,
+          assignmentRole,
+          assignmentSource: AssignmentSource.MANUAL,
+          assignedById: user.id,
+        },
+      });
+      await createNotification(tx, {
+        recipientId: userId,
+        actorId: user.id,
+        type: NotificationType.ASSIGNMENT_ADDED,
+        title: "Job assigned",
+        body: `${user.name ?? "A manager"} assigned ${job.jobIdFromExcel} to you as ${assignmentRole.toLowerCase()}.`,
+        href: `/jobs/${job.id}`,
+        jobId: job.id,
+      });
+    }
+
+    if (userId && job.internalStatus === InternalStatus.UNASSIGNED) {
+      await tx.job.update({
+        where: { id: job.id },
+        data: { internalStatus: InternalStatus.ASSIGNED },
+      });
+    }
+  });
+
+  revalidatePath(`/jobs/${jobId}`);
+  revalidatePath("/jobs");
+  revalidatePath("/assignments");
+}
+
 export async function deactivateAssignmentAction(formData: FormData) {
   const user = await requireUser();
   if (!canAssignJobs(user.role)) redirect("/dashboard");
@@ -290,7 +370,13 @@ export async function deactivateAssignmentAction(formData: FormData) {
   revalidatePath("/assignments");
 }
 
-export async function bulkAssignByIdsAction(formData: FormData) {
+// Bulk-assign Manager and/or Supervisor across many selected jobs at once.
+// Sentinels in formData:
+//   "managerUserId" / "supervisorUserId":
+//     - omitted or "__skip__" → leave that role unchanged on each job
+//     - "" (empty) → clear that role on each job
+//     - <userId>   → set that role to this user on each job
+export async function bulkAssignJobRolesAction(formData: FormData) {
   const user = await requireUser();
   if (!canAssignJobs(user.role)) redirect("/dashboard");
 
@@ -298,46 +384,93 @@ export async function bulkAssignByIdsAction(formData: FormData) {
     .split(",")
     .map((id) => id.trim())
     .filter(Boolean);
-  const userId = String(formData.get("userId") ?? "");
-  const assignmentRole = String(formData.get("assignmentRole") ?? "") as AssignmentRole;
-  if (!jobIds.length || !userId || !Object.values(AssignmentRole).includes(assignmentRole)) return;
+  if (!jobIds.length) return;
 
-  const assignee = await prisma.user.findUnique({ where: { id: userId } });
-  if (!assignee?.active) return;
-  if (!managerCanAssignTo(user, assignee)) redirect("/dashboard");
+  const readChange = (raw: FormDataEntryValue | null): string | undefined => {
+    if (raw === null) return undefined;
+    const s = String(raw);
+    if (s === "__skip__") return undefined;
+    return s;
+  };
+  const managerChange = readChange(formData.get("managerUserId"));
+  const supervisorChange = readChange(formData.get("supervisorUserId"));
+  if (managerChange === undefined && supervisorChange === undefined) return;
+
+  const targetUserIds = [managerChange, supervisorChange].filter(
+    (v): v is string => Boolean(v && v.length),
+  );
+  const targetUsers = targetUserIds.length
+    ? await prisma.user.findMany({ where: { id: { in: targetUserIds } } })
+    : [];
+  const byId = new Map(targetUsers.map((u) => [u.id, u]));
+
+  if (managerChange && !byId.get(managerChange)?.active) return;
+  if (supervisorChange && !byId.get(supervisorChange)?.active) return;
+  if (managerChange && !managerCanAssignTo(user, byId.get(managerChange)!)) redirect("/dashboard");
+  if (supervisorChange && !managerCanAssignTo(user, byId.get(supervisorChange)!)) redirect("/dashboard");
 
   const jobs = await prisma.job.findMany({
     where: { AND: [{ id: { in: jobIds } }, visibleJobsWhere(user)] },
-    include: { assignments: { where: { active: true }, select: { userId: true } } },
+    include: {
+      assignments: { where: { active: true }, select: { id: true, userId: true, assignmentRole: true } },
+    },
   });
 
   await prisma.$transaction(async (tx) => {
     for (const job of jobs) {
       if (!managerCanManageJobAssignment(user, job)) continue;
-      const existing = await tx.jobAssignment.findFirst({
-        where: { jobId: job.id, userId, assignmentRole, assignmentSource: AssignmentSource.MANUAL, active: true },
-      });
-      if (!existing) {
-        await tx.jobAssignment.create({
-          data: {
+
+      for (const [role, change] of [
+        ["MANAGER", managerChange],
+        ["SUPERVISOR", supervisorChange],
+      ] as const) {
+        if (change === undefined) continue;
+        const existing = job.assignments.filter((a) => a.assignmentRole === role);
+        const alreadySet = change && existing.some((a) => a.userId === change);
+        if (alreadySet) continue;
+
+        if (existing.length) {
+          await tx.jobAssignment.updateMany({
+            where: { id: { in: existing.map((e) => e.id) } },
+            data: { active: false },
+          });
+          for (const prev of existing) {
+            await createNotification(tx, {
+              recipientId: prev.userId,
+              actorId: user.id,
+              type: NotificationType.ASSIGNMENT_REMOVED,
+              title: "Assignment removed",
+              body: `${user.name ?? "A manager"} removed your ${role.toLowerCase()} assignment from ${job.jobIdFromExcel}.`,
+              href: `/jobs/${job.id}`,
+              jobId: job.id,
+            });
+          }
+        }
+
+        if (change) {
+          await tx.jobAssignment.create({
+            data: {
+              jobId: job.id,
+              userId: change,
+              assignmentRole: role,
+              assignmentSource: AssignmentSource.MANUAL,
+              assignedById: user.id,
+            },
+          });
+          await createNotification(tx, {
+            recipientId: change,
+            actorId: user.id,
+            type: NotificationType.ASSIGNMENT_ADDED,
+            title: "Job assigned",
+            body: `${user.name ?? "A manager"} assigned ${job.jobIdFromExcel} to you as ${role.toLowerCase()}.`,
+            href: `/jobs/${job.id}`,
             jobId: job.id,
-            userId,
-            assignmentRole,
-            assignmentSource: AssignmentSource.MANUAL,
-            assignedById: user.id,
-          },
-        });
-        await createNotification(tx, {
-          recipientId: userId,
-          actorId: user.id,
-          type: NotificationType.ASSIGNMENT_ADDED,
-          title: "Job assigned",
-          body: `${user.name ?? "A manager"} assigned ${job.jobIdFromExcel} to you.`,
-          href: `/jobs/${job.id}`,
-          jobId: job.id,
-        });
+          });
+        }
       }
-      if (job.internalStatus === InternalStatus.UNASSIGNED) {
+
+      const addingAny = Boolean(managerChange) || Boolean(supervisorChange);
+      if (addingAny && job.internalStatus === InternalStatus.UNASSIGNED) {
         await tx.job.update({
           where: { id: job.id },
           data: { internalStatus: InternalStatus.ASSIGNED },
@@ -346,66 +479,5 @@ export async function bulkAssignByIdsAction(formData: FormData) {
     }
   });
 
-  revalidatePath("/assignments");
-  revalidatePath("/jobs");
-}
-
-export async function bulkAssignJobsAction(formData: FormData) {
-  const user = await requireUser();
-  if (!canAssignJobs(user.role)) redirect("/dashboard");
-
-  const jobNumbers = String(formData.get("jobNumbers") ?? "")
-    .split(/\r?\n|,/)
-    .map((value) => value.trim())
-    .filter(Boolean);
-  const userId = String(formData.get("userId") ?? "");
-  const assignmentRole = String(formData.get("assignmentRole") ?? "") as AssignmentRole;
-  if (!jobNumbers.length || !userId || !Object.values(AssignmentRole).includes(assignmentRole)) return;
-
-  const assignee = await prisma.user.findUnique({ where: { id: userId } });
-  if (!assignee?.active) return;
-  if (!managerCanAssignTo(user, assignee)) redirect("/dashboard");
-
-  const jobs = await prisma.job.findMany({
-    where: { AND: [{ jobIdFromExcel: { in: jobNumbers } }, visibleJobsWhere(user)] },
-    include: { assignments: { where: { active: true }, select: { userId: true } } },
-  });
-
-  await prisma.$transaction(async (tx) => {
-    for (const job of jobs) {
-      if (!managerCanManageJobAssignment(user, job)) continue;
-      const existing = await tx.jobAssignment.findFirst({
-        where: { jobId: job.id, userId, assignmentRole, assignmentSource: AssignmentSource.MANUAL, active: true },
-      });
-      if (!existing) {
-        await tx.jobAssignment.create({
-          data: {
-            jobId: job.id,
-            userId,
-            assignmentRole,
-            assignmentSource: AssignmentSource.MANUAL,
-            assignedById: user.id,
-          },
-        });
-        await createNotification(tx, {
-          recipientId: userId,
-          actorId: user.id,
-          type: NotificationType.ASSIGNMENT_ADDED,
-          title: "Job assigned",
-          body: `${user.name ?? "A manager"} assigned ${job.jobIdFromExcel} to you.`,
-          href: `/jobs/${job.id}`,
-          jobId: job.id,
-        });
-      }
-      if (job.internalStatus === InternalStatus.UNASSIGNED) {
-        await tx.job.update({
-          where: { id: job.id },
-          data: { internalStatus: InternalStatus.ASSIGNED },
-        });
-      }
-    }
-  });
-
-  revalidatePath("/assignments");
   revalidatePath("/jobs");
 }

@@ -9,7 +9,6 @@ import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { assignmentRoles, internalStatuses } from "@/lib/constants";
 import { prisma } from "@/lib/db";
-import { getStaleLevel, hoursInState } from "@/lib/job-state";
 import { assertCanViewJob, canArchiveJobs, canAssignJobs, requireUser, visibleJobsWhere } from "@/lib/rbac";
 import { formatDateTime, titleCaseEnum } from "@/lib/utils";
 import {
@@ -33,7 +32,6 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
       jobName: true,
       priority: true,
       xpmState: true,
-      jobStateNumber: true,
       stateEnteredAt: true,
       sourceManagerName: true,
       sourcePartnerName: true,
@@ -88,9 +86,6 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
       select: { id: true, name: true, role: true },
     }),
   ]);
-  const staleLevel = getStaleLevel(job.jobStateNumber, job.stateEnteredAt);
-  const staleHours = hoursInState(job.stateEnteredAt);
-
   return (
     <>
       <PageHeader title={job.jobIdFromExcel} description={job.jobName} />
@@ -116,17 +111,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
                 </div>
                 <div>
                   <dt className="text-muted-foreground">Source State</dt>
-                  <dd>
-                    <div className="flex flex-col gap-1">
-                      <span>{job.xpmState ?? "-"}</span>
-                      {staleLevel !== "none" ? (
-                        <span className={staleLevel === "critical" ? "text-sm font-semibold text-destructive" : "text-sm font-medium text-orange-700"}>
-                          {staleLevel === "critical" ? "48h+ unchanged" : "24h+ unchanged"}
-                          {typeof staleHours === "number" ? ` (${staleHours}h)` : ""}
-                        </span>
-                      ) : null}
-                    </div>
-                  </dd>
+                  <dd>{job.xpmState ?? "-"}</dd>
                 </div>
                 <div>
                   <dt className="text-muted-foreground">Internal Status</dt>

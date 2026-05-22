@@ -1,14 +1,16 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { ClientCategorySelect } from "@/components/client-category-select";
 import { DepartmentBadge } from "@/components/department-badge";
 import { PageHeader } from "@/components/page-header";
 import { StatusBadge } from "@/components/status-badge";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { clientCategoryLabels } from "@/lib/constants";
 import { prisma } from "@/lib/db";
-import { getStaleLevel, hoursInState } from "@/lib/job-state";
 import { requireUser, visibleJobsWhere } from "@/lib/rbac";
+import { cn } from "@/lib/utils";
 
 const departmentOrder = ["VAT", "SOFTWARE_BK", "BK", "AFS", "UNCLASSIFIED"];
 
@@ -21,6 +23,7 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
     select: {
       id: true,
       displayName: true,
+      category: true,
       jobs: {
         where: jobVisibility,
         select: {
@@ -28,8 +31,6 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
           jobIdFromExcel: true,
           jobName: true,
           xpmState: true,
-          jobStateNumber: true,
-          stateEnteredAt: true,
           internalStatus: true,
           missingFromLatestImport: true,
           archived: true,
@@ -51,7 +52,6 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
     active: client.jobs.filter((job) => !job.archived).length,
     completed: client.jobs.filter((job) => job.internalStatus === "COMPLETED").length,
     missing: client.jobs.filter((job) => job.missingFromLatestImport).length,
-    stale48: client.jobs.filter((job) => getStaleLevel(job.jobStateNumber, job.stateEnteredAt) === "critical").length,
     VAT: client.jobs.filter((job) => job.finalDepartment.code === "VAT").length,
     SOFTWARE_BK: client.jobs.filter((job) => job.finalDepartment.code === "SOFTWARE_BK").length,
     BK: client.jobs.filter((job) => job.finalDepartment.code === "BK").length,
@@ -59,9 +59,27 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
     UNCLASSIFIED: client.jobs.filter((job) => job.finalDepartment.code === "UNCLASSIFIED").length,
   };
 
+  const isAdmin = user.role === "ADMIN";
+  const isSoftware = client.category === "SOFTWARE";
+
   return (
     <>
       <PageHeader title={client.displayName} description="Client detail with all visible jobs grouped by department." />
+      <Card className="mb-4">
+        <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4">
+          <div className="flex items-center gap-3">
+            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Category</span>
+            {client.category ? (
+              <Badge variant={client.category === "SOFTWARE" ? "softwareBk" : "bk"}>
+                {clientCategoryLabels[client.category]}
+              </Badge>
+            ) : (
+              <span className="text-sm text-muted-foreground">Uncategorized</span>
+            )}
+          </div>
+          {isAdmin ? <ClientCategorySelect clientId={client.id} current={client.category} /> : null}
+        </CardContent>
+      </Card>
       <div className="mb-5 grid gap-3 md:grid-cols-4 xl:grid-cols-8">
         {[
           ["Total jobs", counts.total],
@@ -72,7 +90,6 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
           ["Unclassified", counts.UNCLASSIFIED],
           ["Active", counts.active],
           ["Completed", counts.completed],
-          ["48h stale", counts.stale48],
           ["Missing latest", counts.missing],
         ].map(([label, value]) => (
           <Card key={label}>
@@ -109,10 +126,11 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
                     </TableHeader>
                     <TableBody>
                       {jobs.map((job) => {
-                        const staleLevel = getStaleLevel(job.jobStateNumber, job.stateEnteredAt);
-                        const staleHours = hoursInState(job.stateEnteredAt);
                         return (
-                          <TableRow key={job.id}>
+                          <TableRow
+                            className={cn(isSoftware && "bg-yellow-100 hover:bg-yellow-200")}
+                            key={job.id}
+                          >
                             <TableCell className="font-medium">
                               <Link className="text-primary hover:underline" href={`/jobs/${job.id}`}>
                                 {job.jobIdFromExcel}
@@ -120,15 +138,7 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
                             </TableCell>
                             <TableCell>{job.jobName}</TableCell>
                             <TableCell className="text-muted-foreground">
-                              <div className="flex flex-col gap-1">
-                                <span>{job.xpmState ?? "-"}</span>
-                                {staleLevel !== "none" ? (
-                                  <Badge variant={staleLevel === "critical" ? "destructive" : "warning"}>
-                                    {staleLevel === "critical" ? "48h+ unchanged" : "24h+ unchanged"}
-                                    {typeof staleHours === "number" ? ` (${staleHours}h)` : ""}
-                                  </Badge>
-                                ) : null}
-                              </div>
+                              {job.xpmState ?? "-"}
                             </TableCell>
                             <TableCell>
                               <StatusBadge value={job.internalStatus} />

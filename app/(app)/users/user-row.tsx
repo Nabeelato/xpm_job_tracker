@@ -2,7 +2,6 @@
 
 import { useActionState, useState } from "react";
 import { ArrowRightLeft, Trash2 } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
@@ -28,7 +27,6 @@ export type UserRowData = {
   departmentId: string | null;
   supervisorId: string | null;
   active: boolean;
-  isAutoAssignee: boolean;
   activeAssignmentCount: number;
 };
 
@@ -57,11 +55,9 @@ export function UserRow({
     transferAssignmentsAction,
     null,
   );
-  const [selectedDept, setSelectedDept] = useState<string>(user.departmentId ?? "");
   const [transferOpen, setTransferOpen] = useState(false);
 
   const isSelf = user.id === currentUserId;
-  const hasDepartment = selectedDept !== "";
   const eligibleTargets = transferTargets.filter((t) => t.id !== user.id);
 
   function handleDeleteSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -78,12 +74,7 @@ export function UserRow({
 
   return (
     <TableRow>
-      <TableCell className="font-medium align-top">
-        <div className="flex flex-col gap-1">
-          <span>{user.name}</span>
-          {user.isAutoAssignee && <Badge variant="success">Auto-assignee</Badge>}
-        </div>
-      </TableCell>
+      <TableCell className="font-medium align-top">{user.name}</TableCell>
       <TableCell className="align-top">{user.email}</TableCell>
       <TableCell colSpan={5}>
         <form action={updateAction} className="space-y-2">
@@ -96,11 +87,7 @@ export function UserRow({
                 </option>
               ))}
             </Select>
-            <Select
-              name="departmentId"
-              onChange={(e) => setSelectedDept(e.currentTarget.value)}
-              value={selectedDept}
-            >
+            <Select defaultValue={user.departmentId ?? ""} name="departmentId">
               <option value="">No department</option>
               {departments.map((department) => (
                 <option key={department.id} value={department.id}>
@@ -126,23 +113,12 @@ export function UserRow({
               {updatePending ? "Saving..." : "Save"}
             </Button>
           </div>
-          <div className="grid gap-2 md:grid-cols-[auto_1fr_auto]">
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                defaultChecked={user.isAutoAssignee}
-                disabled={!hasDepartment}
-                name="autoAssign"
-                type="checkbox"
-              />
-              Auto-assign
-            </label>
-            <Input
-              minLength={8}
-              name="newPassword"
-              placeholder="Leave blank to keep current password"
-              type="password"
-            />
-          </div>
+          <Input
+            minLength={8}
+            name="newPassword"
+            placeholder="Leave blank to keep current password"
+            type="password"
+          />
           {updateState && !updateState.ok && (
             <p className="text-sm text-destructive">{updateState.error}</p>
           )}

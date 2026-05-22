@@ -9,42 +9,6 @@ import { requireRole } from "@/lib/rbac";
 
 export type ActionResult = { ok: true; message?: string } | { ok: false; error: string };
 
-async function syncDefaultAssignee(
-  userId: string,
-  departmentId: string | null,
-  shouldBeAssignee: boolean,
-  userActive: boolean,
-) {
-  const wantActive = shouldBeAssignee && Boolean(departmentId) && userActive;
-
-  await prisma.$transaction(async (tx) => {
-    // Deactivate any other-department rows for this user (handles dept changes)
-    await tx.departmentDefaultAssignee.updateMany({
-      where: {
-        userId,
-        active: true,
-        ...(departmentId ? { departmentId: { not: departmentId } } : {}),
-      },
-      data: { active: false },
-    });
-
-    if (!departmentId) return;
-
-    if (wantActive) {
-      await tx.departmentDefaultAssignee.upsert({
-        where: { departmentId_userId: { departmentId, userId } },
-        create: { departmentId, userId, active: true },
-        update: { active: true },
-      });
-    } else {
-      await tx.departmentDefaultAssignee.updateMany({
-        where: { userId, departmentId, active: true },
-        data: { active: false },
-      });
-    }
-  });
-}
-
 export async function createUserAction(_prev: ActionResult | null, formData: FormData): Promise<ActionResult> {
   await requireRole(["ADMIN"]);
   const name = String(formData.get("name") ?? "").trim();
@@ -53,7 +17,6 @@ export async function createUserAction(_prev: ActionResult | null, formData: For
   const role = String(formData.get("role") ?? "") as UserRole;
   const departmentId = String(formData.get("departmentId") ?? "") || null;
   const supervisorId = String(formData.get("supervisorId") ?? "") || null;
-  const autoAssign = formData.get("autoAssign") === "on";
 
   if (!name) return { ok: false, error: "Name is required." };
   if (!email) return { ok: false, error: "Email is required." };
@@ -64,14 +27,10 @@ export async function createUserAction(_prev: ActionResult | null, formData: For
   if (existing) return { ok: false, error: "A user with this email already exists." };
 
   const passwordHash = await bcrypt.hash(password, 12);
-  const user = await prisma.user.create({
+  await prisma.user.create({
     data: { name, email, passwordHash, role, departmentId, supervisorId },
     select: { id: true },
   });
-
-  if (autoAssign) {
-    await syncDefaultAssignee(user.id, departmentId, true, true);
-  }
 
   revalidatePath("/users");
   return { ok: true };
@@ -84,7 +43,6 @@ export async function updateUserAction(_prev: ActionResult | null, formData: For
   const departmentId = String(formData.get("departmentId") ?? "") || null;
   const supervisorId = String(formData.get("supervisorId") ?? "") || null;
   const active = formData.get("active") === "on";
-  const autoAssign = formData.get("autoAssign") === "on";
   const newPassword = String(formData.get("newPassword") ?? "");
 
   if (!id) return { ok: false, error: "Missing user id." };
@@ -106,7 +64,6 @@ export async function updateUserAction(_prev: ActionResult | null, formData: For
   }
 
   await prisma.user.update({ where: { id }, data });
-  await syncDefaultAssignee(id, departmentId, autoAssign, active);
 
   revalidatePath("/users");
   return { ok: true };
@@ -216,10 +173,6 @@ export async function transferAssignmentsAction(
 
     if (deactivate) {
       await tx.user.update({ where: { id: fromUserId }, data: { active: false } });
-      await tx.departmentDefaultAssignee.updateMany({
-        where: { userId: fromUserId, active: true },
-        data: { active: false },
-      });
     }
   });
 

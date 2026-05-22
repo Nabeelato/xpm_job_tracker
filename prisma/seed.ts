@@ -97,19 +97,7 @@ async function main() {
         },
       });
 
-      await prisma.departmentDefaultAssignee.upsert({
-        where: {
-          departmentId_userId: {
-            departmentId: department.id,
-            userId: user.id,
-          },
-        },
-        update: { active: true },
-        create: {
-          departmentId: department.id,
-          userId: user.id,
-        },
-      });
+      void user;
     }
   }
 }

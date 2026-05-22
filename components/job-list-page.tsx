@@ -1,18 +1,14 @@
-import Link from "next/link";
 import type { Prisma } from "@prisma/client";
-import { DepartmentBadge } from "@/components/department-badge";
 import { EmptyState } from "@/components/empty-state";
 import { JobFilters } from "@/components/job-filters";
 import { JobFilterTabs, type JobTabsConfig } from "@/components/job-filter-tabs";
+import { JobsTableClient, type JobRow } from "@/components/jobs-table-client";
 import { PageHeader } from "@/components/page-header";
 import { Pagination } from "@/components/pagination";
-import { StatusBadge } from "@/components/status-badge";
-import { Badge } from "@/components/ui/badge";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { prisma } from "@/lib/db";
-import { getStaleLevel, hoursInState, stateGroupWhere, type JobStateGroup } from "@/lib/job-state";
+import { stateGroupWhere, type JobStateGroup } from "@/lib/job-state";
 import { requireUser, visibleJobsWhere } from "@/lib/rbac";
-import { cn, searchParam, toInt } from "@/lib/utils";
+import { searchParam, toInt } from "@/lib/utils";
 
 type Preset = {
   department?: string;
@@ -20,7 +16,6 @@ type Preset = {
   myJobs?: boolean;
   stateGroup?: JobStateGroup;
   stateNumbers?: number[];
-  staleHours?: number;
   tabs?: JobTabsConfig;
 };
 
@@ -52,7 +47,6 @@ export async function JobListPage({
   const pageSize = 25;
   const query = searchParam(rawParams, "q");
   const department = effectivePreset.department ?? searchParam(rawParams, "department");
-  const internalStatus = searchParam(rawParams, "internalStatus");
   const jobStateNumber = toInt(searchParam(rawParams, "jobStateNumber"), 0);
   const stateSet = searchParam(rawParams, "stateSet");
   const priority = searchParam(rawParams, "priority");
@@ -75,7 +69,6 @@ export async function JobListPage({
     });
   }
   if (department) and.push({ finalDepartment: { code: department } });
-  if (internalStatus) and.push({ internalStatus: internalStatus as Prisma.EnumInternalStatusFilter<"Job"> });
   if (
     jobStateNumber > 0 &&
     (!effectivePreset.stateNumbers?.length || effectivePreset.stateNumbers.includes(jobStateNumber))
@@ -91,10 +84,6 @@ export async function JobListPage({
     and.push(stateGroupWhere("OTHER"));
   }
   if (effectivePreset.stateGroup) and.push(stateGroupWhere(effectivePreset.stateGroup));
-  if (effectivePreset.staleHours) {
-    const threshold = new Date(Date.now() - effectivePreset.staleHours * 60 * 60 * 1000);
-    and.push({ jobStateNumber: { in: [3, 4, 5, 6] }, stateEnteredAt: { lte: threshold } });
-  }
   if (priority) and.push({ priority: { contains: priority, mode: "insensitive" } });
   if (assignedUserId === "unassigned") {
     and.push({ assignments: { none: { active: true } } });
@@ -120,14 +109,16 @@ export async function JobListPage({
         jobName: true,
         xpmState: true,
         jobStateNumber: true,
-        stateEnteredAt: true,
-        internalStatus: true,
         missingFromLatestImport: true,
-        client: { select: { displayName: true } },
+        client: { select: { displayName: true, category: true } },
         finalDepartment: { select: { code: true } },
         assignments: {
           where: { active: true },
-          select: { user: { select: { name: true } } },
+          select: {
+            id: true,
+            assignmentRole: true,
+            user: { select: { id: true, name: true } },
+          },
           orderBy: { assignedAt: "desc" },
         },
       },
@@ -141,8 +132,16 @@ export async function JobListPage({
       orderBy: { code: "asc" },
       select: { id: true, code: true, name: true },
     }),
-    prisma.user.findMany({ where: { active: true }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
+    prisma.user.findMany({
+      where: { active: true },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true, role: true },
+    }),
   ]);
+
+  const isAdmin = user.role === "ADMIN";
+  const managerUsers = users.filter((u) => u.role === "MANAGER");
+  const supervisorUsers = users.filter((u) => u.role === "SUPERVISOR");
 
   return (
     <>
@@ -170,77 +169,24 @@ export async function JobListPage({
           title="No jobs found"
         />
       ) : (
-        <div className="rounded-lg border bg-white">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Job No.</TableHead>
-                <TableHead>Client</TableHead>
-                <TableHead>Job Name</TableHead>
-                <TableHead>Department</TableHead>
-                <TableHead>Source State</TableHead>
-                <TableHead>Internal</TableHead>
-                <TableHead>Assigned Users</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {jobs.map((job) => {
-                const staleLevel = getStaleLevel(job.jobStateNumber, job.stateEnteredAt);
-                const staleHours = hoursInState(job.stateEnteredAt);
-                return (
-                  <TableRow
-                    className={cn(
-                      staleLevel === "warning" && "bg-red-50",
-                      staleLevel === "critical" && "bg-red-950 text-white hover:bg-red-900",
-                    )}
-                    key={job.id}
-                  >
-                    <TableCell className="font-medium">
-                      <Link
-                        className={cn("text-primary hover:underline", staleLevel === "critical" && "text-white")}
-                        href={`/jobs/${job.id}`}
-                      >
-                        {job.jobIdFromExcel}
-                      </Link>
-                    </TableCell>
-                    <TableCell>
-                      <Link className="hover:underline" href={`/clients/${job.clientId}`}>
-                        {job.client.displayName}
-                      </Link>
-                    </TableCell>
-                    <TableCell className="max-w-md">{job.jobName}</TableCell>
-                    <TableCell>
-                      <DepartmentBadge code={job.finalDepartment.code} />
-                    </TableCell>
-                    <TableCell className="max-w-xs">
-                      <div className="flex flex-col gap-1">
-                        <span className={cn("text-muted-foreground", staleLevel === "critical" && "text-red-100")}>
-                          {job.xpmState ?? "-"}
-                        </span>
-                        {staleLevel !== "none" ? (
-                          <Badge variant={staleLevel === "critical" ? "destructive" : "warning"}>
-                            {staleLevel === "critical" ? "48h+ unchanged" : "24h+ unchanged"}
-                            {typeof staleHours === "number" ? ` (${staleHours}h)` : ""}
-                          </Badge>
-                        ) : null}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <StatusBadge value={job.internalStatus} />
-                    </TableCell>
-                    <TableCell
-                      className={cn("text-muted-foreground", staleLevel === "critical" && "text-red-100")}
-                    >
-                      {job.assignments.length
-                        ? job.assignments.map((a) => a.user.name).join(", ")
-                        : "Unassigned"}
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        </div>
+        <JobsTableClient
+          isAdmin={isAdmin}
+          jobs={jobs.map(
+            (j): JobRow => ({
+              id: j.id,
+              jobIdFromExcel: j.jobIdFromExcel,
+              clientId: j.clientId,
+              clientName: j.client.displayName,
+              clientCategory: j.client.category,
+              jobName: j.jobName,
+              departmentCode: j.finalDepartment.code,
+              xpmState: j.xpmState,
+              assignments: j.assignments,
+            }),
+          )}
+          managerUsers={managerUsers}
+          supervisorUsers={supervisorUsers}
+        />
       )}
       <Pagination basePath={basePath} page={page} pageSize={pageSize} params={params} total={total} />
     </>

@@ -1,19 +1,15 @@
 import {
-  AssignmentRole,
-  AssignmentSource,
   ChangeSource,
   ImportRowAction,
   ImportStateComparisonCategory,
   ImportStatus,
   InternalStatus,
   type Department,
-  type DepartmentDefaultAssignee,
   type Prisma,
-  type User,
 } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { normalizeClientName, normalizeHeader } from "@/lib/import/normalize";
-import { detectDepartment, detectDepartmentFromManager } from "@/lib/import/department";
+import { detectClientCategoryFromManager, detectDepartment, detectDepartmentFromManager } from "@/lib/import/department";
 import { parseJobStateNumber } from "@/lib/job-state";
 
 const rawAliases = {
@@ -63,111 +59,6 @@ function departmentMap(departments: Department[]) {
   return new Map(departments.map((department) => [department.code, department]));
 }
 
-async function createNotification(
-  tx: Prisma.TransactionClient,
-  data: {
-    recipientId: string;
-    actorId?: string | null;
-    type: "ASSIGNMENT_ADDED" | "ASSIGNMENT_REMOVED";
-    title: string;
-    body: string;
-    href?: string | null;
-    jobId?: string | null;
-  },
-) {
-  if (data.actorId && data.actorId === data.recipientId) return;
-  await tx.notification.create({ data });
-}
-
-type DeptDefault = DepartmentDefaultAssignee & { user: User };
-type QcUser = Pick<User, "id" | "name">;
-
-// Pre-fetched lookup maps passed in from the outer function — avoids repeated queries inside the per-job loop.
-async function syncAutoAssignments(
-  tx: Prisma.TransactionClient,
-  jobId: string,
-  jobIdFromExcel: string,
-  finalDepartmentId: string,
-  changedById: string,
-  defaultsByDeptId: Map<string, DeptDefault[]>,
-  qcUsers: QcUser[],
-) {
-  const departmentDefaults = defaultsByDeptId.get(finalDepartmentId) ?? [];
-  const departmentUserIds = new Set(departmentDefaults.map((d) => d.userId));
-
-  // One query per job to get all existing auto-assignments (replaces multiple findFirst calls)
-  const existingAuto = await tx.jobAssignment.findMany({
-    where: {
-      jobId,
-      active: true,
-      assignmentSource: { in: [AssignmentSource.AUTO_DEPARTMENT, AssignmentSource.AUTO_QC] },
-    },
-  });
-
-  const stale = existingAuto.filter(
-    (a) => a.assignmentSource === AssignmentSource.AUTO_DEPARTMENT && !departmentUserIds.has(a.userId),
-  );
-
-  if (stale.length > 0) {
-    await tx.jobAssignment.updateMany({
-      where: { id: { in: stale.map((a) => a.id) } },
-      data: { active: false },
-    });
-    for (const assignment of stale) {
-      await createNotification(tx, {
-        recipientId: assignment.userId,
-        actorId: changedById,
-        type: "ASSIGNMENT_REMOVED",
-        title: "Assignment removed",
-        body: `${jobIdFromExcel} is no longer auto-assigned to you for its department.`,
-        href: `/jobs/${jobId}`,
-        jobId,
-      });
-    }
-  }
-
-  const desired = [
-    ...departmentDefaults.map((d) => ({
-      userId: d.userId,
-      role: AssignmentRole.PRIMARY,
-      source: AssignmentSource.AUTO_DEPARTMENT,
-      message: "A job was auto-assigned to you as department manager.",
-    })),
-    ...qcUsers.map((u) => ({
-      userId: u.id,
-      role: AssignmentRole.REVIEWER,
-      source: AssignmentSource.AUTO_QC,
-      message: "A job was auto-assigned to you for QC visibility.",
-    })),
-  ];
-
-  // In-memory check against the pre-fetched existing set
-  const existingKey = new Set(existingAuto.map((a) => `${a.userId}:${a.assignmentSource}`));
-
-  for (const desired_ of desired) {
-    if (existingKey.has(`${desired_.userId}:${desired_.source}`)) continue;
-
-    await tx.jobAssignment.create({
-      data: {
-        jobId,
-        userId: desired_.userId,
-        assignmentRole: desired_.role,
-        assignmentSource: desired_.source,
-        assignedById: changedById,
-      },
-    });
-    await createNotification(tx, {
-      recipientId: desired_.userId,
-      actorId: changedById,
-      type: "ASSIGNMENT_ADDED",
-      title: "Job assigned",
-      body: `${jobIdFromExcel} ${desired_.message}`,
-      href: `/jobs/${jobId}`,
-      jobId,
-    });
-  }
-}
-
 export async function applyImportBatch(importBatchId: string, changedById: string) {
   return prisma.$transaction(
     async (tx) => {
@@ -180,25 +71,6 @@ export async function applyImportBatch(importBatchId: string, changedById: strin
       if (batch.status !== ImportStatus.STAGED) throw new Error("Only staged imports can be confirmed.");
 
       const departments = departmentMap(await tx.department.findMany());
-
-      // Pre-fetch once — these are passed into every syncAutoAssignments call instead of re-fetching
-      const [allDeptDefaults, qcUsers] = await Promise.all([
-        tx.departmentDefaultAssignee.findMany({
-          where: { active: true, user: { active: true } },
-          include: { user: true },
-        }),
-        tx.user.findMany({
-          where: { active: true, department: { code: "QC" } },
-          select: { id: true, name: true },
-        }),
-      ]);
-
-      const defaultsByDeptId = new Map<string, DeptDefault[]>();
-      for (const d of allDeptDefaults) {
-        const list = defaultsByDeptId.get(d.departmentId) ?? [];
-        list.push(d);
-        defaultsByDeptId.set(d.departmentId, list);
-      }
 
       const importableRows = batch.rows.filter(
         (row) =>
@@ -219,6 +91,7 @@ export async function applyImportBatch(importBatchId: string, changedById: strin
 
       const logs: Prisma.JobChangeLogCreateManyInput[] = [];
       const now = new Date();
+      const softwareClientIds = new Set<string>();
 
       for (const row of importableRows) {
         if (!row.detectedJobId || !row.detectedClientName || !row.detectedJobName) continue;
@@ -240,6 +113,9 @@ export async function applyImportBatch(importBatchId: string, changedById: strin
         const jobStateNumber = row.newStateNumber ?? parseJobStateNumber(xpmState);
         const sourceManagerName = readRawValue(raw, rawAliases.manager);
         const sourcePartnerName = readRawValue(raw, rawAliases.partner);
+        if (detectClientCategoryFromManager(sourceManagerName) === "SOFTWARE") {
+          softwareClientIds.add(client.id);
+        }
         // Manager name takes priority: Haseeb→BK, Taaha→SOFTWARE_BK, Maaz→AFS, Faizan→VAT
         const detectedCode =
           detectDepartmentFromManager(sourceManagerName) ??
@@ -272,7 +148,6 @@ export async function applyImportBatch(importBatchId: string, changedById: strin
           });
           jobByExcelId.set(row.detectedJobId, { ...created, client });
           addLog(logs, created.id, importBatchId, changedById, "job_created", null, row.detectedJobId);
-          await syncAutoAssignments(tx, created.id, created.jobIdFromExcel, created.finalDepartmentId, changedById, defaultsByDeptId, qcUsers);
           continue;
         }
 
@@ -315,7 +190,15 @@ export async function applyImportBatch(importBatchId: string, changedById: strin
           },
         });
         jobByExcelId.set(row.detectedJobId, { ...updated, client });
-        await syncAutoAssignments(tx, updated.id, updated.jobIdFromExcel, updated.finalDepartmentId, changedById, defaultsByDeptId, qcUsers);
+      }
+
+      if (softwareClientIds.size > 0) {
+        // Auto-categorize as Software Client when a job manager matches the SOFTWARE rule.
+        // Only fills uncategorized rows — never overrides an admin's explicit MANUAL choice.
+        await tx.client.updateMany({
+          where: { id: { in: [...softwareClientIds] }, category: null },
+          data: { category: "SOFTWARE" },
+        });
       }
 
       const missingJobs = await tx.job.findMany({

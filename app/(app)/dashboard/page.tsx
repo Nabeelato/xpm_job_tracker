@@ -1,12 +1,18 @@
 import Link from "next/link";
-import { FileUp } from "lucide-react";
+import type { ImportStatus } from "@prisma/client";
 import { PageHeader } from "@/components/page-header";
-import { buttonVariants } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { prisma } from "@/lib/db";
 import { getDashboardMetrics } from "@/lib/optimized-queries";
 import { requireUser } from "@/lib/rbac";
-import { cn, formatDate, formatDateTime } from "@/lib/utils";
+import { formatDate, formatDateTime } from "@/lib/utils";
+
+function importStatusVariant(status: ImportStatus) {
+  if (status === "APPLIED") return "success" as const;
+  if (status === "FAILED") return "destructive" as const;
+  return "warning" as const;
+}
 
 function MetricCard({ label, value, href }: { label: string; value: number; href: string }) {
   return (
@@ -39,22 +45,24 @@ export default async function DashboardPage() {
         title="Dashboard"
       />
       <Card className="mb-4">
-        <CardContent className="flex flex-col gap-3 p-5 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <div className="text-sm text-muted-foreground">Last uploaded import file</div>
-            <div className="mt-1 text-lg font-semibold">{latestImport ? formatDateTime(latestImport.uploadedAt) : "No imports uploaded yet"}</div>
-            {latestImport ? (
-              <div className="mt-1 text-sm text-muted-foreground">
-                {latestImport.fileName} | {latestImport.status} | XPM file date {formatDate(latestImport.xpmDownloadedAt)}
-              </div>
-            ) : null}
+        <CardContent className="p-5">
+          <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Last uploaded import file
           </div>
-          {user.role === "ADMIN" ? (
-            <Link className={cn(buttonVariants(), "self-start sm:self-center")} href="/imports/upload">
-              <FileUp className="h-4 w-4" />
-              Import file
-            </Link>
-          ) : null}
+          {latestImport ? (
+            <>
+              <div className="mt-2 flex flex-wrap items-center gap-3">
+                <span className="text-lg font-semibold">{formatDateTime(latestImport.uploadedAt)}</span>
+                <Badge variant={importStatusVariant(latestImport.status)}>{latestImport.status}</Badge>
+              </div>
+              <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
+                <span className="font-mono text-xs">{latestImport.fileName}</span>
+                <span>XPM file date {formatDate(latestImport.xpmDownloadedAt)}</span>
+              </div>
+            </>
+          ) : (
+            <div className="mt-2 text-lg font-semibold">No imports uploaded yet</div>
+          )}
         </CardContent>
       </Card>
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -69,7 +77,6 @@ export default async function DashboardPage() {
         <MetricCard href="/jobs?department=UNCLASSIFIED&stateSet=workflow" label="Unclassified jobs" value={metrics.unclassifiedJobs} />
         <MetricCard href="/jobs?assignedUserId=unassigned" label="Unassigned jobs" value={metrics.unassignedJobs} />
         <MetricCard href="/jobs/missing" label="Missing from latest file" value={metrics.missingJobs} />
-        <MetricCard href="/jobs/stale-48" label="Stale jobs" value={metrics.staleJobs} />
         <MetricCard href="/jobs/completed" label="Completed jobs" value={metrics.completedJobs} />
         <MetricCard href="/jobs/cancelled" label="Cancelled jobs" value={metrics.cancelledJobs} />
       </div>

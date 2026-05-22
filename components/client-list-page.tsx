@@ -4,10 +4,12 @@ import { DepartmentBadge } from "@/components/department-badge";
 import { EmptyState } from "@/components/empty-state";
 import { PageHeader } from "@/components/page-header";
 import { Pagination } from "@/components/pagination";
+import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { clientCategoryLabels } from "@/lib/constants";
 import { getClientSummaries, type ClientFilter } from "@/lib/optimized-queries";
 import { requireUser } from "@/lib/rbac";
-import { searchParam, toInt } from "@/lib/utils";
+import { cn, searchParam, toInt } from "@/lib/utils";
 
 export async function ClientListPage({
   title,
@@ -47,21 +49,33 @@ export async function ClientListPage({
             <TableHeader>
               <TableRow>
                 <TableHead>Client</TableHead>
+                <TableHead>Category</TableHead>
                 <TableHead>Total Jobs</TableHead>
                 <TableHead>Department Mix</TableHead>
                 <TableHead>Active</TableHead>
                 <TableHead>Completed</TableHead>
-                <TableHead>48h Stale</TableHead>
                 <TableHead>Missing Latest</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {summaries.map((client) => (
-                <TableRow key={client.id}>
+                <TableRow
+                  className={cn(client.category === "SOFTWARE" && "bg-yellow-100 hover:bg-yellow-200")}
+                  key={client.id}
+                >
                   <TableCell className="font-medium">
                     <Link className="text-primary hover:underline" href={`/clients/${client.id}`}>
                       {client.displayName}
                     </Link>
+                  </TableCell>
+                  <TableCell>
+                    {client.category ? (
+                      <Badge variant={client.category === "SOFTWARE" ? "softwareBk" : "bk"}>
+                        {clientCategoryLabels[client.category]}
+                      </Badge>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">—</span>
+                    )}
                   </TableCell>
                   <TableCell>{client.totalJobs}</TableCell>
                   <TableCell>
@@ -78,7 +92,6 @@ export async function ClientListPage({
                   </TableCell>
                   <TableCell>{client.activeJobs}</TableCell>
                   <TableCell>{client.completedJobs}</TableCell>
-                  <TableCell>{client.stale48Jobs}</TableCell>
                   <TableCell>{client.missingJobs}</TableCell>
                 </TableRow>
               ))}

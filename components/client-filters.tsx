@@ -12,18 +12,26 @@ export function ClientFilters({ params }: { params: URLSearchParams }) {
       </div>
       <Select defaultValue={params.get("filter") ?? ""} name="filter">
         <option value="">All clients</option>
-        <option value="multiple">Multiple jobs</option>
-        <option value="vat">VAT jobs</option>
-        <option value="software_bk">Software Bookkeeping jobs</option>
-        <option value="bk">BK jobs</option>
-        <option value="afs">AFS jobs</option>
-        <option value="vat_bk">VAT + BK jobs</option>
-        <option value="vat_afs">VAT + AFS jobs</option>
-        <option value="bk_afs">BK + AFS jobs</option>
-        <option value="all_3">All 3 departments</option>
-        <option value="unclassified">Unclassified jobs</option>
-        <option value="stale_48">Not updated 48 hours</option>
-        <option value="missing">Missing jobs</option>
+        <optgroup label="Category">
+          <option value="category_software">Software Client</option>
+          <option value="category_manual">Manual Client</option>
+          <option value="category_uncategorized">Uncategorized</option>
+        </optgroup>
+        <optgroup label="By department">
+          <option value="vat">VAT jobs</option>
+          <option value="software_bk">Software Bookkeeping jobs</option>
+          <option value="bk">BK jobs</option>
+          <option value="afs">AFS jobs</option>
+          <option value="vat_bk">VAT + BK jobs</option>
+          <option value="vat_afs">VAT + AFS jobs</option>
+          <option value="bk_afs">BK + AFS jobs</option>
+          <option value="all_3">All 3 departments</option>
+          <option value="unclassified">Unclassified jobs</option>
+        </optgroup>
+        <optgroup label="Other">
+          <option value="multiple">Multiple jobs</option>
+          <option value="missing">Missing jobs</option>
+        </optgroup>
       </Select>
       <Button type="submit">Apply filters</Button>
     </form>

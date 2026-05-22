@@ -1,10 +1,8 @@
 import type { Prisma } from "@prisma/client";
 
 export type JobStateGroup = "MAIN" | "OTHER" | "COMPLETED" | "CANCELLED";
-export type StaleLevel = "none" | "warning" | "critical";
 
 const mainStateNumbers = new Set([2, 3, 4, 5, 6]);
-const staleTrackedStateNumbers = new Set([3, 4, 5, 6]);
 
 export function parseJobStateNumber(value: unknown): number | null {
   if (value === null || value === undefined) return null;
@@ -17,10 +15,6 @@ export function parseJobStateNumber(value: unknown): number | null {
 
 export function isMainState(number: number | null | undefined) {
   return typeof number === "number" && mainStateNumbers.has(number);
-}
-
-export function isStaleTrackedState(number: number | null | undefined) {
-  return typeof number === "number" && staleTrackedStateNumbers.has(number);
 }
 
 export function stateGroupForNumber(number: number | null | undefined): JobStateGroup {
@@ -40,25 +34,4 @@ export function stateGroupWhere(group: JobStateGroup): Prisma.JobWhereInput {
       { jobStateNumber: { in: [1, 7, 8, 9, 10] } },
     ],
   };
-}
-
-export function getStaleLevel(
-  stateNumber: number | null | undefined,
-  stateEnteredAt: Date | string | null | undefined,
-  now = new Date(),
-): StaleLevel {
-  if (!isStaleTrackedState(stateNumber) || !stateEnteredAt) return "none";
-  const enteredAt = stateEnteredAt instanceof Date ? stateEnteredAt : new Date(stateEnteredAt);
-  if (Number.isNaN(enteredAt.getTime())) return "none";
-  const hours = (now.getTime() - enteredAt.getTime()) / (1000 * 60 * 60);
-  if (hours >= 48) return "critical";
-  if (hours >= 24) return "warning";
-  return "none";
-}
-
-export function hoursInState(stateEnteredAt: Date | string | null | undefined, now = new Date()) {
-  if (!stateEnteredAt) return null;
-  const enteredAt = stateEnteredAt instanceof Date ? stateEnteredAt : new Date(stateEnteredAt);
-  if (Number.isNaN(enteredAt.getTime())) return null;
-  return Math.max(0, Math.floor((now.getTime() - enteredAt.getTime()) / (1000 * 60 * 60)));
 }

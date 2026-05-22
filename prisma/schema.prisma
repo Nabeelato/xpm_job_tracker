@@ -25,16 +25,17 @@ enum InternalStatus {
 }
 
 enum AssignmentRole {
-  PRIMARY
-  REVIEWER
+  MANAGER
   SUPERVISOR
-  HELPER
 }
 
 enum AssignmentSource {
   MANUAL
-  AUTO_DEPARTMENT
-  AUTO_QC
+}
+
+enum ClientCategory {
+  SOFTWARE
+  MANUAL
 }
 
 enum ImportStatus {
@@ -94,7 +95,6 @@ model User {
   uploadedBatches     ImportBatch[]     @relation("UploadedBy")
   comments            JobComment[]
   changeLogs          JobChangeLog[]    @relation("ChangedBy")
-  defaultDepartmentAssignments DepartmentDefaultAssignee[]
   receivedNotifications Notification[]  @relation("NotificationRecipient")
   actedNotifications    Notification[]  @relation("NotificationActor")
   authoredDiaryEntries  DiaryEntry[]    @relation("DiaryAuthor")
@@ -106,16 +106,18 @@ model User {
 }
 
 model Client {
-  id                  String    @id @default(cuid())
-  displayName         String    @map("display_name")
-  normalizedClientKey String    @unique @map("normalized_client_key")
-  sourceClientName    String    @map("source_client_name")
-  createdAt           DateTime  @default(now()) @map("created_at")
-  updatedAt           DateTime  @updatedAt @map("updated_at")
+  id                  String          @id @default(cuid())
+  displayName         String          @map("display_name")
+  normalizedClientKey String          @unique @map("normalized_client_key")
+  sourceClientName    String          @map("source_client_name")
+  category            ClientCategory?
+  createdAt           DateTime        @default(now()) @map("created_at")
+  updatedAt           DateTime        @updatedAt @map("updated_at")
   jobs                Job[]
   importRows          ImportRow[]
 
   @@index([displayName])
+  @@index([category])
   @@map("clients")
 }
 
@@ -129,24 +131,8 @@ model Department {
   autoDetectedJobs Job[]    @relation("AutoDetectedDepartment")
   finalJobs        Job[]    @relation("FinalDepartment")
   users            User[]
-  defaultAssignees DepartmentDefaultAssignee[]
 
   @@map("departments")
-}
-
-model DepartmentDefaultAssignee {
-  id           String     @id @default(cuid())
-  departmentId String     @map("department_id")
-  department   Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
-  userId       String     @map("user_id")
-  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  active       Boolean    @default(true)
-  createdAt    DateTime   @default(now()) @map("created_at")
-  updatedAt    DateTime   @updatedAt @map("updated_at")
-
-  @@unique([departmentId, userId])
-  @@index([userId])
-  @@map("department_default_assignees")
 }
 
 model Job {
