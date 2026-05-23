@@ -5,7 +5,7 @@ import { buttonVariants } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { prisma } from "@/lib/db";
 import { requireRole } from "@/lib/rbac";
-import { cn, formatDate, formatDateTime } from "@/lib/utils";
+import { cn, formatDateTime } from "@/lib/utils";
 
 export default async function ImportsPage() {
   const user = await requireRole(["ADMIN", "MANAGER"]);
@@ -42,7 +42,7 @@ export default async function ImportsPage() {
               <TableHead>Status</TableHead>
               <TableHead>Uploaded By</TableHead>
               <TableHead>Uploaded At</TableHead>
-              <TableHead>XPM File Date</TableHead>
+              <TableHead>XPM File Exported At</TableHead>
               <TableHead>State Updated</TableHead>
               <TableHead>New Jobs</TableHead>
               <TableHead>Missing</TableHead>
@@ -60,7 +60,7 @@ export default async function ImportsPage() {
                 <TableCell>{batch.status}</TableCell>
                 <TableCell>{batch.uploadedBy.name}</TableCell>
                 <TableCell>{formatDateTime(batch.uploadedAt)}</TableCell>
-                <TableCell>{formatDate(batch.xpmDownloadedAt)}</TableCell>
+                <TableCell>{formatDateTime(batch.xpmDownloadedAt)}</TableCell>
                 <TableCell>{batch.stateUpdatedCount}</TableCell>
                 <TableCell>{batch.newJobsCount}</TableCell>
                 <TableCell>{batch.missingJobsCount}</TableCell>

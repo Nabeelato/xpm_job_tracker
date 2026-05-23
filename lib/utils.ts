@@ -5,12 +5,15 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+const DISPLAY_TIME_ZONE = "Asia/Karachi";
+
 export function formatDateTime(value: Date | string | null | undefined) {
   if (!value) return "-";
   const date = typeof value === "string" ? new Date(value) : value;
   return new Intl.DateTimeFormat("en", {
     dateStyle: "medium",
     timeStyle: "short",
+    timeZone: DISPLAY_TIME_ZONE,
   }).format(date);
 }
 
@@ -19,6 +22,7 @@ export function formatDate(value: Date | string | null | undefined) {
   const date = typeof value === "string" ? new Date(value) : value;
   return new Intl.DateTimeFormat("en", {
     dateStyle: "medium",
+    timeZone: DISPLAY_TIME_ZONE,
   }).format(date);
 }
 

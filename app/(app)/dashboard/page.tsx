@@ -6,7 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { prisma } from "@/lib/db";
 import { getDashboardMetrics } from "@/lib/optimized-queries";
 import { requireUser } from "@/lib/rbac";
-import { formatDate, formatDateTime } from "@/lib/utils";
+import { formatDateTime } from "@/lib/utils";
 
 function importStatusVariant(status: ImportStatus) {
   if (status === "APPLIED") return "success" as const;
@@ -57,7 +57,7 @@ export default async function DashboardPage() {
               </div>
               <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
                 <span className="font-mono text-xs">{latestImport.fileName}</span>
-                <span>XPM file date {formatDate(latestImport.xpmDownloadedAt)}</span>
+                <span>XPM file date {formatDateTime(latestImport.xpmDownloadedAt)}</span>
               </div>
             </>
           ) : (

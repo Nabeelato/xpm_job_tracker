@@ -3,7 +3,7 @@ import { ImportSummaryCards } from "@/components/import-summary-cards";
 import { PageHeader } from "@/components/page-header";
 import { prisma } from "@/lib/db";
 import { requireRole } from "@/lib/rbac";
-import { formatDate, formatDateTime } from "@/lib/utils";
+import { formatDateTime } from "@/lib/utils";
 
 export default async function ImportBatchDetailPage({ params }: { params: Promise<{ id: string }> }) {
   await requireRole(["ADMIN", "MANAGER"]);
@@ -60,7 +60,7 @@ export default async function ImportBatchDetailPage({ params }: { params: Promis
   return (
     <>
       <PageHeader
-        description={`${batch.fileName} | ${batch.status} | Uploaded ${formatDateTime(batch.uploadedAt)} | XPM file date ${formatDate(batch.xpmDownloadedAt)}`}
+        description={`${batch.fileName} | ${batch.status} | Uploaded ${formatDateTime(batch.uploadedAt)} | XPM file date ${formatDateTime(batch.xpmDownloadedAt)}`}
         title="Import Batch Detail"
       />
       <ImportSummaryCards batch={batch} />

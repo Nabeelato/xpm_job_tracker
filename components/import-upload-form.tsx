@@ -7,27 +7,40 @@ import { Input } from "@/components/ui/input";
 import { maxUploadSizeBytes, requiredUploadHeaders } from "@/lib/constants";
 
 const uploadErrors: Record<string, string> = {
-  "missing-download-date": "Enter the date when the file was downloaded from XPM.",
-  "download-date-past": "The XPM download date cannot be earlier than today's upload date. Please download a fresh file from XPM.",
-  "download-date-future": "The XPM download date cannot be after today's upload date.",
-  "download-date-not-newer": "XPM file date must be later than the previous import's XPM date.",
+  "missing-download-date": "Enter the date and time the XPM file was downloaded.",
+  "download-date-future": "The XPM download time cannot be in the future.",
+  "download-date-not-newer": "XPM download date/time must be after the last imported file's XPM date/time.",
 };
 
-function todayInputDate() {
-  const now = new Date();
-  const month = `${now.getMonth() + 1}`.padStart(2, "0");
-  const day = `${now.getDate()}`.padStart(2, "0");
-  return `${now.getFullYear()}-${month}-${day}`;
+function pad(n: number) {
+  return `${n}`.padStart(2, "0");
+}
+
+function toLocalInputDateTime(date: Date) {
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function nowInputDateTime() {
+  return toLocalInputDateTime(new Date());
 }
 
 export function ImportUploadForm({
   action,
   errorCode,
+  lastAppliedXpmAt,
 }: {
   action: (formData: FormData) => void;
   errorCode?: string;
+  lastAppliedXpmAt?: string | null;
 }) {
-  const today = useMemo(() => todayInputDate(), []);
+  const defaultValue = useMemo(() => nowInputDateTime(), []);
+  const minValue = useMemo(() => {
+    if (!lastAppliedXpmAt) return undefined;
+    const d = new Date(lastAppliedXpmAt);
+    if (Number.isNaN(d.getTime())) return undefined;
+    // Add one minute so the input picker treats equal-to-last as invalid.
+    return toLocalInputDateTime(new Date(d.getTime() + 60_000));
+  }, [lastAppliedXpmAt]);
   const dateInputRef = useRef<HTMLInputElement>(null);
   const errorMessage = errorCode ? uploadErrors[errorCode] : "";
 
@@ -47,25 +60,44 @@ export function ImportUploadForm({
           dateInputRef.current?.focus();
           return;
         }
-        if (downloadedAt < today) {
+        const picked = new Date(downloadedAt);
+        if (Number.isNaN(picked.getTime())) {
           event.preventDefault();
-          window.alert(uploadErrors["download-date-past"]);
+          window.alert(uploadErrors["missing-download-date"]);
           dateInputRef.current?.focus();
           return;
         }
-        if (downloadedAt > today) {
+        if (picked.getTime() > Date.now()) {
           event.preventDefault();
           window.alert(uploadErrors["download-date-future"]);
           dateInputRef.current?.focus();
+          return;
+        }
+        if (lastAppliedXpmAt) {
+          const last = new Date(lastAppliedXpmAt);
+          if (!Number.isNaN(last.getTime()) && picked.getTime() <= last.getTime()) {
+            event.preventDefault();
+            window.alert(uploadErrors["download-date-not-newer"]);
+            dateInputRef.current?.focus();
+          }
         }
       }}
     >
       {errorMessage ? <p className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">{errorMessage}</p> : null}
       <div className="space-y-2">
         <label className="text-sm font-medium" htmlFor="xpmDownloadedAt">
-          Current upload
+          XPM file download date
         </label>
-        <Input defaultValue={today} id="xpmDownloadedAt" max={today} name="xpmDownloadedAt" ref={dateInputRef} required type="date" />
+        <Input
+          defaultValue={defaultValue}
+          id="xpmDownloadedAt"
+          max={nowInputDateTime()}
+          min={minValue}
+          name="xpmDownloadedAt"
+          ref={dateInputRef}
+          required
+          type="datetime-local"
+        />
       </div>
       <div className="space-y-2">
         <label className="text-sm font-medium" htmlFor="file">

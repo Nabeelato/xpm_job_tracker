@@ -203,7 +203,7 @@ function SectionCard({
 export function ImportResultSections({ rows }: { rows: ImportResultRow[] }) {
   const newJobRows = orderByNewState(rows.filter((row) => row.action === "NEW_JOB"));
   const nameChangeRows = orderByClient(rows.filter((row) => row.action !== "NEW_JOB" && hasNameChange(row)));
-  const stateUpdatedRows = orderByClient(rows.filter((row) => row.stateComparisonCategory === "STATE_UPDATED"));
+  const stateUpdatedRows = orderByNewState(rows.filter((row) => row.stateComparisonCategory === "STATE_UPDATED"));
   const completedOrCancelledRows = orderByClient(
     rows.filter(
       (row) =>

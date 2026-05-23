@@ -6,7 +6,7 @@ import { PageHeader } from "@/components/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { prisma } from "@/lib/db";
 import { requireRole } from "@/lib/rbac";
-import { formatDate, formatDateTime } from "@/lib/utils";
+import { formatDateTime } from "@/lib/utils";
 import { confirmImportAction } from "../../actions";
 
 export default async function ImportPreviewPage({ params }: { params: Promise<{ id: string }> }) {
@@ -74,7 +74,7 @@ export default async function ImportPreviewPage({ params }: { params: Promise<{ 
   return (
     <>
       <PageHeader
-        description={`${batch.fileName} | Uploaded by ${batch.uploadedBy.name} | Uploaded ${formatDateTime(batch.uploadedAt)} | XPM file date ${formatDate(batch.xpmDownloadedAt)}`}
+        description={`${batch.fileName} | Uploaded by ${batch.uploadedBy.name} | Uploaded ${formatDateTime(batch.uploadedAt)} | XPM file date ${formatDateTime(batch.xpmDownloadedAt)}`}
         title="Import Preview"
       />
       <ImportSummaryCards batch={batch} />

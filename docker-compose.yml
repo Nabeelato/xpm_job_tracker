@@ -1,17 +1,18 @@
 services:
   postgres:
-    image: ${POSTGRES_IMAGE:-postgres:18}
+    image: postgres:18
+    container_name: xpm-job-tracker-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-jobtracker}
-      POSTGRES_USER: ${POSTGRES_USER:-jobtracker}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-jobtracker_dev_password}
+      POSTGRES_DB: jobtracker
+      POSTGRES_USER: jobtracker
+      POSTGRES_PASSWORD: jobtracker_dev_password
     ports:
-      - "127.0.0.1:${POSTGRES_PORT:-15432}:5432"
+      - "15432:5432"
     volumes:
       - postgres-data:/var/lib/postgresql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-jobtracker} -d ${POSTGRES_DB:-jobtracker}"]
+      test: ["CMD-SHELL", "pg_isready -U jobtracker -d jobtracker"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -21,29 +22,24 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
-        NODE_IMAGE: ${NODE_IMAGE:-node:22-alpine}
+        NODE_IMAGE: node:24-alpine
+        DATABASE_URL: postgresql://jobtracker:jobtracker_dev_password@postgres:5432/jobtracker?schema=public
+    container_name: xpm-job-tracker-web
     restart: unless-stopped
-    init: true
     env_file:
       - .env
     environment:
-      DATABASE_URL: ${DOCKER_DATABASE_URL:-postgresql://jobtracker:jobtracker_dev_password@postgres:5432/jobtracker?schema=public}
+      DATABASE_URL: postgresql://jobtracker:jobtracker_dev_password@postgres:5432/jobtracker?schema=public
+      NEXTAUTH_URL: http://localhost:3000
       NODE_ENV: production
-      HOST: 0.0.0.0
-      PORT: 3000
-      ALLOWED_HOSTS: "${ALLOWED_HOSTS:-localhost,127.0.0.1,[::1]}"
-      RUN_SEED: ${RUN_SEED:-false}
     ports:
-      - "${APP_PORT:-3000}:3000"
+      - "3000:3000"
     depends_on:
       postgres:
         condition: service_healthy
-    healthcheck:
-      test: ["CMD-SHELL", "node -e \"const http=require('http');let host=(process.env.ALLOWED_HOSTS||'localhost').split(',')[0].trim()||'localhost';if(host.startsWith('.')) host=host.slice(1);const req=http.request({hostname:'127.0.0.1',port:3000,path:'/login',headers:{Host:host}},(res)=>process.exit(res.statusCode<500?0:1));req.on('error',()=>process.exit(1));req.setTimeout(5000,()=>req.destroy());req.end();\""]
-      interval: 30s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
+    command: sh -c "npx prisma migrate deploy && npm run prisma:seed && npm run serve"
 
 volumes:
   postgres-data:
+
+

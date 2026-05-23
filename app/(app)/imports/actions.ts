@@ -8,27 +8,22 @@ import { requireRole } from "@/lib/rbac";
 import { stageImportBatch } from "@/lib/import/stage";
 import { applyImportBatch } from "@/lib/import/apply";
 
-function todayInputDate() {
-  const now = new Date();
-  const month = `${now.getMonth() + 1}`.padStart(2, "0");
-  const day = `${now.getDate()}`.padStart(2, "0");
-  return `${now.getFullYear()}-${month}-${day}`;
-}
-
-function parseInputDate(value: FormDataEntryValue | null) {
+function parseInputDateTime(value: FormDataEntryValue | null) {
   const text = String(value ?? "");
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return null;
-  return { text, date: new Date(`${text}T00:00:00`) };
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(text)) return null;
+  const date = new Date(text);
+  if (Number.isNaN(date.getTime())) return null;
+  return { text, date };
 }
 
 export async function stageImportAction(formData: FormData) {
   const user = await requireRole(["ADMIN"]);
-  const xpmDownloadedAt = parseInputDate(formData.get("xpmDownloadedAt"));
+  const xpmDownloadedAt = parseInputDateTime(formData.get("xpmDownloadedAt"));
   if (!xpmDownloadedAt) redirect("/imports/upload?error=missing-download-date");
 
-  const uploadDate = todayInputDate();
-  if (xpmDownloadedAt.text < uploadDate) redirect("/imports/upload?error=download-date-past");
-  if (xpmDownloadedAt.text > uploadDate) redirect("/imports/upload?error=download-date-future");
+  if (xpmDownloadedAt.date.getTime() > Date.now()) {
+    redirect("/imports/upload?error=download-date-future");
+  }
 
   const lastApplied = await prisma.importBatch.findFirst({
     where: { status: ImportStatus.APPLIED, xpmDownloadedAt: { not: null } },
