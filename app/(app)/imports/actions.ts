@@ -11,7 +11,9 @@ import { applyImportBatch } from "@/lib/import/apply";
 function parseInputDateTime(value: FormDataEntryValue | null) {
   const text = String(value ?? "");
   if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(text)) return null;
-  const date = new Date(text);
+  // datetime-local has no timezone; the user enters PKT (Asia/Karachi, UTC+5, no DST).
+  // Parse explicitly with the +05:00 offset so the server doesn't treat it as UTC.
+  const date = new Date(`${text}:00+05:00`);
   if (Number.isNaN(date.getTime())) return null;
   return { text, date };
 }
