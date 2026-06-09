@@ -7,10 +7,11 @@ import { StatusBadge } from "@/components/status-badge";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { clientCategoryLabels } from "@/lib/constants";
+import { bookkeepingByLabels, bookkeepingSoftwareLabels, clientCategoryLabels } from "@/lib/constants";
 import { prisma } from "@/lib/db";
 import { requireUser, visibleJobsWhere } from "@/lib/rbac";
 import { cn } from "@/lib/utils";
+import { updateClientBookkeepingAction } from "@/app/(app)/clients/actions";
 
 const departmentOrder = ["VAT", "SOFTWARE_BK", "BK", "AFS", "UNCLASSIFIED"];
 
@@ -24,6 +25,8 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
       id: true,
       displayName: true,
       category: true,
+      bookkeepingSoftware: true,
+      bookkeepingBy: true,
       jobs: {
         where: jobVisibility,
         select: {
@@ -78,6 +81,52 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
             )}
           </div>
           {isAdmin ? <ClientCategorySelect clientId={client.id} current={client.category} /> : null}
+        </CardContent>
+      </Card>
+      <Card className="mb-4">
+        <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4">
+          <div className="flex items-center gap-4 flex-wrap">
+            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Bookkeeping</span>
+            {client.bookkeepingSoftware ? (
+              <span className="text-sm font-medium">
+                {bookkeepingSoftwareLabels[client.bookkeepingSoftware]}
+                {client.bookkeepingBy === "CLIENT" ? " - Client" : ""}
+              </span>
+            ) : (
+              <span className="text-sm text-muted-foreground">Not set</span>
+            )}
+          </div>
+          {isAdmin ? (
+            <form action={updateClientBookkeepingAction} className="flex items-center gap-2 flex-wrap">
+              <input name="clientId" type="hidden" value={client.id} />
+              <select
+                className="rounded-md border border-input bg-background px-2 py-1 text-sm"
+                defaultValue={client.bookkeepingSoftware ?? ""}
+                name="bookkeepingSoftware"
+              >
+                <option value="">No software</option>
+                {(Object.keys(bookkeepingSoftwareLabels) as (keyof typeof bookkeepingSoftwareLabels)[]).map((key) => (
+                  <option key={key} value={key}>{bookkeepingSoftwareLabels[key]}</option>
+                ))}
+              </select>
+              <select
+                className="rounded-md border border-input bg-background px-2 py-1 text-sm"
+                defaultValue={client.bookkeepingBy ?? ""}
+                name="bookkeepingBy"
+              >
+                <option value="">N/A</option>
+                {(Object.keys(bookkeepingByLabels) as (keyof typeof bookkeepingByLabels)[]).map((key) => (
+                  <option key={key} value={key}>{bookkeepingByLabels[key]}</option>
+                ))}
+              </select>
+              <button
+                className="rounded-md bg-primary px-3 py-1 text-xs font-medium text-primary-foreground hover:bg-primary/90"
+                type="submit"
+              >
+                Save
+              </button>
+            </form>
+          ) : null}
         </CardContent>
       </Card>
       <div className="mb-5 grid gap-3 md:grid-cols-4 xl:grid-cols-8">

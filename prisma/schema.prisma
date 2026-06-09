@@ -27,6 +27,7 @@ enum InternalStatus {
 enum AssignmentRole {
   MANAGER
   SUPERVISOR
+  STAFF
 }
 
 enum AssignmentSource {
@@ -76,6 +77,18 @@ enum NotificationType {
   DIARY_ENTRY
 }
 
+enum BookkeepingSoftware {
+  ZOHO
+  QUICKBOOKS
+  XERO
+  SAGE
+}
+
+enum BookkeepingBy {
+  FIRM
+  CLIENT
+}
+
 model User {
   id                  String            @id @default(cuid())
   name                String
@@ -111,6 +124,8 @@ model Client {
   normalizedClientKey String          @unique @map("normalized_client_key")
   sourceClientName    String          @map("source_client_name")
   category            ClientCategory?
+  bookkeepingSoftware BookkeepingSoftware? @map("bookkeeping_software")
+  bookkeepingBy       BookkeepingBy?       @map("bookkeeping_by")
   createdAt           DateTime        @default(now()) @map("created_at")
   updatedAt           DateTime        @updatedAt @map("updated_at")
   jobs                Job[]

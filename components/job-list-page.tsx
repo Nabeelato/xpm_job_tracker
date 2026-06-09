@@ -110,7 +110,7 @@ export async function JobListPage({
         xpmState: true,
         jobStateNumber: true,
         missingFromLatestImport: true,
-        client: { select: { displayName: true, category: true } },
+        client: { select: { displayName: true, category: true, bookkeepingSoftware: true, bookkeepingBy: true } },
         finalDepartment: { select: { code: true } },
         assignments: {
           where: { active: true },
@@ -122,7 +122,7 @@ export async function JobListPage({
           orderBy: { assignedAt: "desc" },
         },
       },
-      orderBy: [{ missingFromLatestImport: "desc" }, { updatedAt: "desc" }],
+      orderBy: [{ missingFromLatestImport: "desc" }, { jobIdFromExcel: "asc" }],
       skip: (page - 1) * pageSize,
       take: pageSize,
     }),
@@ -135,13 +135,23 @@ export async function JobListPage({
     prisma.user.findMany({
       where: { active: true },
       orderBy: { name: "asc" },
-      select: { id: true, name: true, role: true },
+      select: { id: true, name: true, role: true, supervisorId: true },
     }),
   ]);
 
   const isAdmin = user.role === "ADMIN";
+  const isSupervisor = user.role === "SUPERVISOR";
   const managerUsers = users.filter((u) => u.role === "MANAGER");
   const supervisorUsers = users.filter((u) => u.role === "SUPERVISOR");
+
+  const staffBySupId = new Map<string, { id: string; name: string | null }[]>();
+  for (const u of users) {
+    if (u.role === "STAFF" && u.supervisorId) {
+      const list = staffBySupId.get(u.supervisorId) ?? [];
+      list.push({ id: u.id, name: u.name });
+      staffBySupId.set(u.supervisorId, list);
+    }
+  }
 
   return (
     <>
@@ -170,21 +180,30 @@ export async function JobListPage({
         />
       ) : (
         <JobsTableClient
+          currentUserId={user.id}
           isAdmin={isAdmin}
-          jobs={jobs.map(
-            (j): JobRow => ({
+          isSupervisor={isSupervisor}
+          jobs={jobs.map((j): JobRow => {
+            const supervisorUserId =
+              j.assignments.find((a) => a.assignmentRole === "SUPERVISOR")?.user.id ?? null;
+            return {
               id: j.id,
               jobIdFromExcel: j.jobIdFromExcel,
               clientId: j.clientId,
               clientName: j.client.displayName,
               clientCategory: j.client.category,
+              bookkeepingSoftware: j.client.bookkeepingSoftware,
+              bookkeepingBy: j.client.bookkeepingBy,
               jobName: j.jobName,
               departmentCode: j.finalDepartment.code,
               xpmState: j.xpmState,
               assignments: j.assignments,
-            }),
-          )}
+              staffUsers: supervisorUserId ? (staffBySupId.get(supervisorUserId) ?? []) : [],
+              supervisorMissing: !supervisorUserId,
+            };
+          })}
           managerUsers={managerUsers}
+          staffBySupervisorId={Object.fromEntries(staffBySupId)}
           supervisorUsers={supervisorUsers}
         />
       )}

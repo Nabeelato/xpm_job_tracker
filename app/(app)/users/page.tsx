@@ -3,11 +3,19 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { prisma } from "@/lib/db";
 import { requireRole } from "@/lib/rbac";
+import { cn } from "@/lib/utils";
 import { CreateUserForm } from "./create-user-form";
+import { HierarchyView } from "./hierarchy-view";
 import { UserRow } from "./user-row";
 
-export default async function UsersPage() {
+export default async function UsersPage({
+  searchParams,
+}: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const currentUser = await requireRole(["ADMIN"]);
+  const rawParams = (await searchParams) ?? {};
+  const view = rawParams.view === "hierarchy" ? "hierarchy" : "table";
   const [users, departments, assignmentCounts] = await Promise.all([
     prisma.user.findMany({
       select: {
@@ -57,49 +65,79 @@ export default async function UsersPage() {
   return (
     <>
       <PageHeader description="Create users, assign roles, and map staff to supervisors." title="User Management" />
-      <div className="grid gap-5 xl:grid-cols-[420px_1fr]">
-        <Card>
-          <CardHeader>
-            <CardTitle>Create User</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <CreateUserForm departments={departments} supervisors={supervisors} />
-          </CardContent>
-        </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Users</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Role</TableHead>
-                  <TableHead>Department</TableHead>
-                  <TableHead>Supervisor</TableHead>
-                  <TableHead>Active</TableHead>
-                  <TableHead>Save</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {rows.map((row) => (
-                  <UserRow
-                    currentUserId={currentUser.id}
-                    departments={departments}
-                    key={row.id}
-                    supervisors={supervisors}
-                    transferTargets={transferTargets}
-                    user={row}
-                  />
-                ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
+      <div className="mb-4 flex gap-2">
+        <a
+          className={cn(
+            "rounded-md px-4 py-2 text-sm font-medium transition-colors",
+            view === "table"
+              ? "bg-primary text-primary-foreground"
+              : "border bg-background text-foreground hover:bg-accent",
+          )}
+          href="/users"
+        >
+          Table
+        </a>
+        <a
+          className={cn(
+            "rounded-md px-4 py-2 text-sm font-medium transition-colors",
+            view === "hierarchy"
+              ? "bg-primary text-primary-foreground"
+              : "border bg-background text-foreground hover:bg-accent",
+          )}
+          href="/users?view=hierarchy"
+        >
+          Hierarchy
+        </a>
       </div>
+
+      {view === "hierarchy" ? (
+        <HierarchyView departments={departments} users={rows} />
+      ) : (
+        <div className="grid gap-5 xl:grid-cols-[420px_1fr]">
+          <Card>
+            <CardHeader>
+              <CardTitle>Create User</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <CreateUserForm departments={departments} supervisors={supervisors} />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Users</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Email</TableHead>
+                    <TableHead>Role</TableHead>
+                    <TableHead>Department</TableHead>
+                    <TableHead>Supervisor</TableHead>
+                    <TableHead>Active</TableHead>
+                    <TableHead>Save</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {rows.map((row) => (
+                    <UserRow
+                      currentUserId={currentUser.id}
+                      departments={departments}
+                      key={row.id}
+                      supervisors={supervisors}
+                      transferTargets={transferTargets}
+                      user={row}
+                    />
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </div>
+      )}
     </>
   );
 }

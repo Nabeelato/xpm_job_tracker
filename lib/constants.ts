@@ -1,4 +1,4 @@
-import type { AssignmentRole, ClientCategory, InternalStatus, UserRole } from "@prisma/client";
+import type { AssignmentRole, BookkeepingBy, BookkeepingSoftware, ClientCategory, InternalStatus, UserRole } from "@prisma/client";
 
 export const requiredUploadHeaders = ["[Job] Job No.", "[Client] Client", "[Job] Name"] as const;
 
@@ -49,7 +49,7 @@ export const internalStatuses: InternalStatus[] = [
   "ARCHIVED",
 ];
 
-export const assignmentRoles: AssignmentRole[] = ["MANAGER", "SUPERVISOR"];
+export const assignmentRoles: AssignmentRole[] = ["MANAGER", "SUPERVISOR", "STAFF"];
 
 export const userRoles: UserRole[] = ["ADMIN", "MANAGER", "SUPERVISOR", "STAFF"];
 
@@ -58,6 +58,18 @@ export const clientCategories: ClientCategory[] = ["SOFTWARE", "MANUAL"];
 export const clientCategoryLabels: Record<ClientCategory, string> = {
   SOFTWARE: "Software Client",
   MANUAL: "Manual Client",
+};
+
+export const bookkeepingSoftwareLabels: Record<BookkeepingSoftware, string> = {
+  ZOHO: "Zoho",
+  QUICKBOOKS: "QuickBooks",
+  XERO: "Xero",
+  SAGE: "Sage",
+};
+
+export const bookkeepingByLabels: Record<BookkeepingBy, string> = {
+  FIRM: "Firm",
+  CLIENT: "Client",
 };
 
 export const maxUploadSizeBytes = 15 * 1024 * 1024;

@@ -1,8 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useRef, useState, useTransition } from "react";
-import type { ClientCategory } from "@prisma/client";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import type { BookkeepingBy, BookkeepingSoftware, ClientCategory } from "@prisma/client";
+import { bookkeepingSoftwareLabels } from "@/lib/constants";
 import { DepartmentBadge } from "@/components/department-badge";
 import { RoleAssignSelect } from "@/components/role-assign-select";
 import { Button } from "@/components/ui/button";
@@ -25,26 +27,45 @@ export type JobRow = {
   clientId: string;
   clientName: string;
   clientCategory: ClientCategory | null;
+  bookkeepingSoftware: BookkeepingSoftware | null;
+  bookkeepingBy: BookkeepingBy | null;
   jobName: string;
   departmentCode: string;
   xpmState: string | null;
   assignments: Assignment[];
+  staffUsers: { id: string; name: string | null }[];
+  supervisorMissing: boolean;
 };
 
 export function JobsTableClient({
   jobs,
   isAdmin,
+  isSupervisor = false,
+  currentUserId,
   managerUsers,
   supervisorUsers,
+  staffBySupervisorId,
 }: {
   jobs: JobRow[];
   isAdmin: boolean;
+  isSupervisor?: boolean;
+  currentUserId?: string;
   managerUsers: RoleUser[];
   supervisorUsers: RoleUser[];
+  staffBySupervisorId: Record<string, RoleUser[]>;
 }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [isPending, startTransition] = useTransition();
   const formRef = useRef<HTMLFormElement>(null);
+  const router = useRouter();
+  // Local optimistic overrides so Staff dropdown updates immediately when supervisor changes
+  const [supervisorOverrides, setSupervisorOverrides] = useState<Record<string, boolean>>({});
+  const [staffOverrides, setStaffOverrides] = useState<Record<string, RoleUser[]>>({});
+
+  useEffect(() => {
+    const id = setInterval(() => router.refresh(), 30_000);
+    return () => clearInterval(id);
+  }, [router]);
 
   const allOnPageSelected = jobs.length > 0 && jobs.every((j) => selected.has(j.id));
 
@@ -83,10 +104,11 @@ export function JobsTableClient({
       e.preventDefault();
       return;
     }
-    startTransition(() => {
-      // Let the form action fire; once it resolves, server revalidates /jobs
-      // and Next refreshes the route segment — selection is cleared below.
-      setTimeout(() => setSelected(new Set()), 0);
+    e.preventDefault();
+    startTransition(async () => {
+      await bulkAssignJobRolesAction(fd);
+      setSelected(new Set());
+      router.refresh();
     });
   }
 
@@ -160,15 +182,26 @@ export function JobsTableClient({
               <TableHead>Job Name</TableHead>
               <TableHead>Department</TableHead>
               <TableHead>Source State</TableHead>
+              <TableHead>Bookkeeping</TableHead>
               <TableHead>Manager</TableHead>
               <TableHead>Supervisor</TableHead>
+              <TableHead>Staff</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {jobs.map((job) => {
               const manager = job.assignments.find((a) => a.assignmentRole === "MANAGER")?.user ?? null;
               const supervisor = job.assignments.find((a) => a.assignmentRole === "SUPERVISOR")?.user ?? null;
+              const staff = job.assignments.find((a) => a.assignmentRole === "STAFF")?.user ?? null;
               const isChecked = selected.has(job.id);
+              // Use local overrides if available, fall back to server-computed values
+              const effectiveSupervisorMissing =
+                job.id in supervisorOverrides ? !supervisorOverrides[job.id] : job.supervisorMissing;
+              const effectiveStaffUsers =
+                job.id in staffOverrides ? staffOverrides[job.id] : job.staffUsers;
+              // Supervisor can edit staff only on rows where they are the assigned supervisor
+              const isAssignedSupervisor = isSupervisor && !!currentUserId && supervisor?.id === currentUserId;
+              const canEditStaff = isAdmin || isAssignedSupervisor;
               const isSoftware = job.clientCategory === "SOFTWARE";
               return (
                 <TableRow
@@ -203,6 +236,11 @@ export function JobsTableClient({
                     <DepartmentBadge code={job.departmentCode} />
                   </TableCell>
                   <TableCell className="max-w-xs text-muted-foreground">{job.xpmState ?? "-"}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">
+                    {job.bookkeepingSoftware
+                      ? `${bookkeepingSoftwareLabels[job.bookkeepingSoftware]}${job.bookkeepingBy === "CLIENT" ? " - Client" : ""}`
+                      : "-"}
+                  </TableCell>
                   <TableCell>
                     {isAdmin ? (
                       <RoleAssignSelect
@@ -222,12 +260,35 @@ export function JobsTableClient({
                       <RoleAssignSelect
                         current={supervisor}
                         jobId={job.id}
+                        onAssigned={(userId) => {
+                          setSupervisorOverrides((prev) => ({ ...prev, [job.id]: !!userId }));
+                          setStaffOverrides((prev) => ({
+                            ...prev,
+                            [job.id]: userId ? (staffBySupervisorId[userId] ?? []) : [],
+                          }));
+                        }}
                         role="SUPERVISOR"
                         users={supervisorUsers}
                       />
                     ) : (
                       <span className={supervisor ? "" : "text-muted-foreground"}>
                         {supervisor?.name ?? "Unassigned"}
+                      </span>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    {canEditStaff ? (
+                      <RoleAssignSelect
+                        current={staff}
+                        disabled={effectiveSupervisorMissing}
+                        disabledTitle="Assign a supervisor first"
+                        jobId={job.id}
+                        role="STAFF"
+                        users={effectiveStaffUsers}
+                      />
+                    ) : (
+                      <span className={staff ? "" : "text-muted-foreground"}>
+                        {staff?.name ?? "Unassigned"}
                       </span>
                     )}
                   </TableCell>

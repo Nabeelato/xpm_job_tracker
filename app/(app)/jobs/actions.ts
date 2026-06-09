@@ -244,29 +244,54 @@ export async function assignJobAction(formData: FormData) {
 
 export async function setJobRoleAssignmentAction(formData: FormData) {
   const user = await requireUser();
-  if (!canAssignJobs(user.role)) redirect("/dashboard");
 
   const jobId = String(formData.get("jobId") ?? "");
   const userId = String(formData.get("userId") ?? "");
   const assignmentRole = String(formData.get("assignmentRole") ?? "") as AssignmentRole;
   if (!jobId || !Object.values(AssignmentRole).includes(assignmentRole)) return;
 
+  const isManagerLevel = user.role === "ADMIN" || user.role === "MANAGER";
+  const isSupervisorAssigningStaff = user.role === "SUPERVISOR" && assignmentRole === AssignmentRole.STAFF;
+  if (!isManagerLevel && !isSupervisorAssigningStaff) redirect("/dashboard");
+
   const job = await prisma.job.findUnique({
     where: { id: jobId },
     include: { assignments: { where: { active: true }, select: { id: true, userId: true, assignmentRole: true } } },
   });
   if (!job) return;
-  if (!managerCanManageJobAssignment(user, job)) redirect("/jobs/my");
+
+  if (user.role === "SUPERVISOR") {
+    // Supervisor must be the assigned supervisor on this job
+    const isSupOnJob = job.assignments.some(
+      (a) => a.assignmentRole === AssignmentRole.SUPERVISOR && a.userId === user.id,
+    );
+    if (!isSupOnJob) redirect("/dashboard");
+  } else {
+    if (!managerCanManageJobAssignment(user, job)) redirect("/jobs/my");
+  }
 
   const existingForRole = job.assignments.filter((a) => a.assignmentRole === assignmentRole);
   const alreadySet = userId && existingForRole.some((a) => a.userId === userId);
   if (alreadySet) return;
 
+  // Fetch old assignee name for change log before transaction
+  const isTrackedRole = assignmentRole === AssignmentRole.SUPERVISOR || assignmentRole === AssignmentRole.STAFF;
+  let oldAssigneeName: string | null = null;
+  if (isTrackedRole && existingForRole[0]) {
+    const oldUser = await prisma.user.findUnique({ where: { id: existingForRole[0].userId }, select: { name: true } });
+    oldAssigneeName = oldUser?.name ?? null;
+  }
+
   let assignee = null as Awaited<ReturnType<typeof prisma.user.findUnique>> | null;
   if (userId) {
     assignee = await prisma.user.findUnique({ where: { id: userId } });
     if (!assignee?.active) return;
-    if (!managerCanAssignTo(user, assignee)) redirect("/dashboard");
+    if (user.role === "SUPERVISOR") {
+      // Supervisor can only assign their own direct reports
+      if (assignee.supervisorId !== user.id) redirect("/dashboard");
+    } else if (!managerCanAssignTo(user, assignee)) {
+      redirect("/dashboard");
+    }
   }
 
   await prisma.$transaction(async (tx) => {
@@ -285,6 +310,28 @@ export async function setJobRoleAssignmentAction(formData: FormData) {
           href: `/jobs/${job.id}`,
           jobId: job.id,
         });
+      }
+    }
+
+    // When supervisor changes, clear staff assignments — staff are scoped to their supervisor
+    if (assignmentRole === AssignmentRole.SUPERVISOR) {
+      const staffAssignments = job.assignments.filter((a) => a.assignmentRole === AssignmentRole.STAFF);
+      if (staffAssignments.length) {
+        await tx.jobAssignment.updateMany({
+          where: { id: { in: staffAssignments.map((a) => a.id) } },
+          data: { active: false },
+        });
+        for (const prev of staffAssignments) {
+          await createNotification(tx, {
+            recipientId: prev.userId,
+            actorId: user.id,
+            type: NotificationType.ASSIGNMENT_REMOVED,
+            title: "Assignment removed",
+            body: `${user.name ?? "A manager"} removed your staff assignment from ${job.jobIdFromExcel} due to a supervisor change.`,
+            href: `/jobs/${job.id}`,
+            jobId: job.id,
+          });
+        }
       }
     }
 
@@ -316,6 +363,16 @@ export async function setJobRoleAssignmentAction(formData: FormData) {
       });
     }
   });
+
+  if (isTrackedRole) {
+    await logUserChange({
+      job: { connect: { id: jobId } },
+      changedBy: { connect: { id: user.id } },
+      fieldName: assignmentRole === AssignmentRole.SUPERVISOR ? "supervisor_assignment" : "staff_assignment",
+      oldValue: oldAssigneeName,
+      newValue: assignee?.name ?? null,
+    });
+  }
 
   revalidatePath(`/jobs/${jobId}`);
   revalidatePath("/jobs");

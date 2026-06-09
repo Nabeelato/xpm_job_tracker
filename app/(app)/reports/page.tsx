@@ -135,6 +135,10 @@ export default async function ReportsPage() {
             <CardTitle>Exception Reports</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3 text-sm">
+            <Link className="flex justify-between rounded-md border p-3 hover:bg-muted/40" href="/reports/assignments">
+              <span>Assignment change history</span>
+              <span>&#8594;</span>
+            </Link>
             <Link className="flex justify-between rounded-md border p-3 hover:bg-muted/40" href="/clients/multiple">
               <span>Clients with multiple jobs</span>
               <span>{metrics.clientsWithMultipleJobs}</span>
