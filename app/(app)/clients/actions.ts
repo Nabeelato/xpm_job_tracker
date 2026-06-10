@@ -50,6 +50,8 @@ export async function updateClientBookkeepingAction(formData: FormData) {
         ? (rawBy as BookkeepingBy)
         : null;
 
+  const fromJobId = String(formData.get("fromJobId") ?? "");
+
   await prisma.client.update({
     where: { id: clientId },
     data: { bookkeepingSoftware, bookkeepingBy },
@@ -57,4 +59,5 @@ export async function updateClientBookkeepingAction(formData: FormData) {
 
   revalidatePath(`/clients/${clientId}`);
   revalidatePath("/jobs");
+  if (fromJobId) revalidatePath(`/jobs/${fromJobId}`);
 }

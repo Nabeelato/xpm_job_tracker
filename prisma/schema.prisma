@@ -92,7 +92,8 @@ enum BookkeepingBy {
 model User {
   id                  String            @id @default(cuid())
   name                String
-  email               String            @unique
+  username            String            @unique
+  email               String?           @unique
   passwordHash        String            @map("password_hash")
   role                UserRole
   departmentId        String?           @map("department_id")
@@ -352,6 +353,14 @@ model Notification {
   @@index([readAt])
   @@index([recipientId, readAt])
   @@map("notifications")
+}
+
+model SystemSetting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("system_settings")
 }
 
 model DiaryEntry {

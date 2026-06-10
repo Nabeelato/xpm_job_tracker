@@ -12,23 +12,23 @@ export type ActionResult = { ok: true; message?: string } | { ok: false; error: 
 export async function createUserAction(_prev: ActionResult | null, formData: FormData): Promise<ActionResult> {
   await requireRole(["ADMIN"]);
   const name = String(formData.get("name") ?? "").trim();
-  const email = String(formData.get("email") ?? "").trim().toLowerCase();
+  const username = String(formData.get("username") ?? "").trim();
   const password = String(formData.get("password") ?? "");
   const role = String(formData.get("role") ?? "") as UserRole;
   const departmentId = String(formData.get("departmentId") ?? "") || null;
   const supervisorId = String(formData.get("supervisorId") ?? "") || null;
 
   if (!name) return { ok: false, error: "Name is required." };
-  if (!email) return { ok: false, error: "Email is required." };
+  if (!username) return { ok: false, error: "Username is required." };
   if (password.length < 8) return { ok: false, error: "Password must be at least 8 characters." };
   if (!Object.values(UserRole).includes(role)) return { ok: false, error: "Invalid role." };
 
-  const existing = await prisma.user.findUnique({ where: { email }, select: { id: true } });
-  if (existing) return { ok: false, error: "A user with this email already exists." };
+  const existing = await prisma.user.findUnique({ where: { username }, select: { id: true } });
+  if (existing) return { ok: false, error: "A user with this username already exists." };
 
   const passwordHash = await bcrypt.hash(password, 12);
   await prisma.user.create({
-    data: { name, email, passwordHash, role, departmentId, supervisorId },
+    data: { name, username, passwordHash, role, departmentId, supervisorId },
     select: { id: true },
   });
 
@@ -39,6 +39,7 @@ export async function createUserAction(_prev: ActionResult | null, formData: For
 export async function updateUserAction(_prev: ActionResult | null, formData: FormData): Promise<ActionResult> {
   await requireRole(["ADMIN"]);
   const id = String(formData.get("id") ?? "");
+  const username = String(formData.get("username") ?? "").trim();
   const role = String(formData.get("role") ?? "") as UserRole;
   const departmentId = String(formData.get("departmentId") ?? "") || null;
   const supervisorId = String(formData.get("supervisorId") ?? "") || null;
@@ -46,18 +47,26 @@ export async function updateUserAction(_prev: ActionResult | null, formData: For
   const newPassword = String(formData.get("newPassword") ?? "");
 
   if (!id) return { ok: false, error: "Missing user id." };
+  if (!username) return { ok: false, error: "Username is required." };
   if (!Object.values(UserRole).includes(role)) return { ok: false, error: "Invalid role." };
   if (newPassword.length > 0 && newPassword.length < 8) {
     return { ok: false, error: "Password must be at least 8 characters." };
   }
 
+  const conflict = await prisma.user.findFirst({
+    where: { username, NOT: { id } },
+    select: { id: true },
+  });
+  if (conflict) return { ok: false, error: "That username is already taken by another user." };
+
   const data: {
+    username: string;
     role: UserRole;
     departmentId: string | null;
     supervisorId: string | null;
     active: boolean;
     passwordHash?: string;
-  } = { role, departmentId, supervisorId, active };
+  } = { username, role, departmentId, supervisorId, active };
 
   if (newPassword.length >= 8) {
     data.passwordHash = await bcrypt.hash(newPassword, 12);

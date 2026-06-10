@@ -16,6 +16,7 @@ export type DashboardMetrics = {
   missingJobs: number;
   completedJobs: number;
   cancelledJobs: number;
+  ifzaCheckJobs: number;
 };
 
 export type ClientFilter =
@@ -48,6 +49,7 @@ export type ClientSummary = {
 type CountValue = number | bigint | string | null;
 
 type DashboardMetricsRow = Record<keyof DashboardMetrics, CountValue>;
+
 
 type ClientSummaryRow = {
   id: string;
@@ -108,6 +110,7 @@ export async function getDashboardMetrics(user: AppSessionUser): Promise<Dashboa
         j.id,
         j.client_id,
         j.job_state_number,
+        j.xpm_state,
         j.internal_status::text AS internal_status,
         j.missing_from_latest_import,
         j.state_entered_at,
@@ -141,7 +144,8 @@ export async function getDashboardMetrics(user: AppSessionUser): Promise<Dashboa
       ))::int AS "unassignedJobs",
       (COUNT(*) FILTER (WHERE missing_from_latest_import = TRUE))::int AS "missingJobs",
       (COUNT(*) FILTER (WHERE job_state_number = 11))::int AS "completedJobs",
-      (COUNT(*) FILTER (WHERE job_state_number = 12))::int AS "cancelledJobs"
+      (COUNT(*) FILTER (WHERE job_state_number = 12))::int AS "cancelledJobs",
+      (COUNT(*) FILTER (WHERE xpm_state LIKE '%3.2%'))::int AS "ifzaCheckJobs"
     FROM visible_jobs
   `);
 
@@ -159,6 +163,7 @@ export async function getDashboardMetrics(user: AppSessionUser): Promise<Dashboa
     missingJobs: toNumber(row?.missingJobs),
     completedJobs: toNumber(row?.completedJobs),
     cancelledJobs: toNumber(row?.cancelledJobs),
+    ifzaCheckJobs: toNumber(row?.ifzaCheckJobs),
   };
 }
 

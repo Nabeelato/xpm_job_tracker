@@ -1,6 +1,7 @@
 import type { Prisma } from "@prisma/client";
 
 export type JobStateGroup = "MAIN" | "OTHER" | "COMPLETED" | "CANCELLED";
+export type XpmSubState = "ifza_check" | "job_on_hold";
 
 const mainStateNumbers = new Set([2, 3, 4, 5, 6]);
 
@@ -22,6 +23,12 @@ export function stateGroupForNumber(number: number | null | undefined): JobState
   if (number === 12) return "CANCELLED";
   if (isMainState(number)) return "MAIN";
   return "OTHER";
+}
+
+export function xpmSubStateWhere(sub: XpmSubState): Prisma.JobWhereInput {
+  if (sub === "ifza_check") return { xpmState: { contains: "3.2" } };
+  if (sub === "job_on_hold") return { xpmState: { contains: "3.1" } };
+  return {};
 }
 
 export function stateGroupWhere(group: JobStateGroup): Prisma.JobWhereInput {

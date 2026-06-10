@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 type HierarchyUser = {
   id: string;
   name: string | null;
-  email: string;
+  username: string;
   role: string;
   departmentId: string | null;
   supervisorId: string | null;
@@ -48,8 +48,8 @@ function UserNode({
             {"└─ "}
           </span>
         )}
-        <span className="font-medium">{user.name ?? user.email}</span>
-        <span className="text-xs text-muted-foreground">{user.email}</span>
+        <span className="font-medium">{user.name ?? user.username}</span>
+        <span className="text-xs text-muted-foreground">{user.username}</span>
         <Badge className={cn("text-xs", roleColors[user.role] ?? "")} variant="outline">
           {user.role}
         </Badge>

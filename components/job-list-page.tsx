@@ -6,7 +6,8 @@ import { JobsTableClient, type JobRow } from "@/components/jobs-table-client";
 import { PageHeader } from "@/components/page-header";
 import { Pagination } from "@/components/pagination";
 import { prisma } from "@/lib/db";
-import { stateGroupWhere, type JobStateGroup } from "@/lib/job-state";
+import { stateGroupWhere, xpmSubStateWhere, type JobStateGroup, type XpmSubState } from "@/lib/job-state";
+import { getSystemSetting } from "@/lib/settings";
 import { requireUser, visibleJobsWhere } from "@/lib/rbac";
 import { searchParam, toInt } from "@/lib/utils";
 
@@ -56,6 +57,8 @@ export async function JobListPage({
   const missingParam =
     effectivePreset.missing === undefined ? searchParam(rawParams, "missing") : String(effectivePreset.missing);
   const archivedParam = searchParam(rawParams, "archived") ?? "false";
+  const xpmSubState = searchParam(rawParams, "xpmSubState") as XpmSubState | null;
+  const sortBy = searchParam(rawParams, "sortBy");
 
   const and: Prisma.JobWhereInput[] = [visibleJobsWhere(user)];
   if (effectivePreset.myJobs) and.push({ assignments: { some: { userId: user.id, active: true } } });
@@ -96,10 +99,13 @@ export async function JobListPage({
   if (missingParam === "false") and.push({ missingFromLatestImport: false });
   if (archivedParam === "true") and.push({ archived: true });
   if (archivedParam === "false") and.push({ archived: false });
+  if (xpmSubState === "ifza_check" || xpmSubState === "job_on_hold") and.push(xpmSubStateWhere(xpmSubState));
 
   const where: Prisma.JobWhereInput = { AND: and };
 
-  const [jobs, total, departments, users] = await Promise.all([
+  const showAssignmentAge = (await getSystemSetting("showAssignmentAge")) === "true";
+
+  const [jobs, total, departments, users, workloadRows] = await Promise.all([
     prisma.job.findMany({
       where,
       select: {
@@ -117,12 +123,15 @@ export async function JobListPage({
           select: {
             id: true,
             assignmentRole: true,
+            assignedAt: true,
             user: { select: { id: true, name: true } },
           },
           orderBy: { assignedAt: "desc" },
         },
       },
-      orderBy: [{ missingFromLatestImport: "desc" }, { jobIdFromExcel: "asc" }],
+      orderBy: sortBy === "software"
+        ? [{ client: { bookkeepingSoftware: "asc" } }, { jobIdFromExcel: "asc" }]
+        : [{ missingFromLatestImport: "desc" }, { jobIdFromExcel: "asc" }],
       skip: (page - 1) * pageSize,
       take: pageSize,
     }),
@@ -136,6 +145,17 @@ export async function JobListPage({
       where: { active: true },
       orderBy: { name: "asc" },
       select: { id: true, name: true, role: true, supervisorId: true },
+    }),
+    // Active assignment counts per user, per department — workflow states 3-6 only
+    prisma.jobAssignment.findMany({
+      where: {
+        active: true,
+        job: { jobStateNumber: { in: [3, 4, 5, 6] } },
+      },
+      select: {
+        userId: true,
+        job: { select: { finalDepartment: { select: { code: true } } } },
+      },
     }),
   ]);
 
@@ -151,6 +171,14 @@ export async function JobListPage({
       list.push({ id: u.id, name: u.name });
       staffBySupId.set(u.supervisorId, list);
     }
+  }
+
+  // Build workload map: userId → { deptCode: count }
+  const userWorkload: Record<string, Record<string, number>> = {};
+  for (const row of workloadRows) {
+    const deptCode = row.job.finalDepartment.code;
+    if (!userWorkload[row.userId]) userWorkload[row.userId] = {};
+    userWorkload[row.userId][deptCode] = (userWorkload[row.userId][deptCode] ?? 0) + 1;
   }
 
   return (
@@ -183,6 +211,7 @@ export async function JobListPage({
           currentUserId={user.id}
           isAdmin={isAdmin}
           isSupervisor={isSupervisor}
+          showAssignmentAge={showAssignmentAge}
           jobs={jobs.map((j): JobRow => {
             const supervisorUserId =
               j.assignments.find((a) => a.assignmentRole === "SUPERVISOR")?.user.id ?? null;
@@ -197,7 +226,15 @@ export async function JobListPage({
               jobName: j.jobName,
               departmentCode: j.finalDepartment.code,
               xpmState: j.xpmState,
+              jobStateNumber: j.jobStateNumber,
               assignments: j.assignments,
+              earliestAssignedAt:
+                j.assignments.length > 0
+                  ? j.assignments.reduce((earliest, a) =>
+                      a.assignedAt < earliest ? a.assignedAt : earliest,
+                      j.assignments[0].assignedAt,
+                    )
+                  : null,
               staffUsers: supervisorUserId ? (staffBySupId.get(supervisorUserId) ?? []) : [],
               supervisorMissing: !supervisorUserId,
             };
@@ -205,6 +242,7 @@ export async function JobListPage({
           managerUsers={managerUsers}
           staffBySupervisorId={Object.fromEntries(staffBySupId)}
           supervisorUsers={supervisorUsers}
+          userWorkload={userWorkload}
         />
       )}
       <Pagination basePath={basePath} page={page} pageSize={pageSize} params={params} total={total} />

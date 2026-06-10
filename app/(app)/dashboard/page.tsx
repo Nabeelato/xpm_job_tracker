@@ -2,11 +2,14 @@ import Link from "next/link";
 import type { ImportStatus } from "@prisma/client";
 import { PageHeader } from "@/components/page-header";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { prisma } from "@/lib/db";
 import { getDashboardMetrics } from "@/lib/optimized-queries";
+import { getSystemSetting } from "@/lib/settings";
 import { requireUser } from "@/lib/rbac";
 import { formatDateTime } from "@/lib/utils";
+import { toggleAssignmentAgeAction } from "@/app/(app)/jobs/actions";
 
 function importStatusVariant(status: ImportStatus) {
   if (status === "APPLIED") return "success" as const;
@@ -29,12 +32,13 @@ function MetricCard({ label, value, href }: { label: string; value: number; href
 
 export default async function DashboardPage() {
   const user = await requireUser();
-  const [metrics, latestImport] = await Promise.all([
+  const [metrics, latestImport, showAssignmentAge] = await Promise.all([
     getDashboardMetrics(user),
     prisma.importBatch.findFirst({
       orderBy: { uploadedAt: "desc" },
       select: { id: true, fileName: true, status: true, uploadedAt: true, xpmDownloadedAt: true },
     }),
+    getSystemSetting("showAssignmentAge"),
   ]);
 
   return (
@@ -65,6 +69,19 @@ export default async function DashboardPage() {
           )}
         </CardContent>
       </Card>
+      {user.role === "ADMIN" ? (
+        <div className="mb-4 flex items-center gap-3 rounded-lg border bg-muted/40 px-4 py-3 text-sm">
+          <span className="font-medium">Assignment age column in job tables:</span>
+          <span className={showAssignmentAge === "true" ? "text-green-600 font-semibold" : "text-muted-foreground"}>
+            {showAssignmentAge === "true" ? "ON" : "OFF"}
+          </span>
+          <form action={toggleAssignmentAgeAction}>
+            <Button size="sm" type="submit" variant="outline">
+              {showAssignmentAge === "true" ? "Turn off" : "Turn on"}
+            </Button>
+          </form>
+        </div>
+      ) : null}
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard href="/jobs" label="Total jobs" value={metrics.totalJobs} />
         <MetricCard href="/clients" label="Total clients" value={metrics.totalClients} />
@@ -79,6 +96,7 @@ export default async function DashboardPage() {
         <MetricCard href="/jobs/missing" label="Missing from latest file" value={metrics.missingJobs} />
         <MetricCard href="/jobs/completed" label="Completed jobs" value={metrics.completedJobs} />
         <MetricCard href="/jobs/cancelled" label="Cancelled jobs" value={metrics.cancelledJobs} />
+        <MetricCard href="/jobs?xpmSubState=ifza_check" label="IFZA Check jobs" value={metrics.ifzaCheckJobs} />
       </div>
     </>
   );

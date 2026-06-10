@@ -22,7 +22,7 @@ type TransferTarget = { id: string; name: string };
 export type UserRowData = {
   id: string;
   name: string;
-  email: string;
+  username: string;
   role: string;
   departmentId: string | null;
   supervisorId: string | null;
@@ -75,10 +75,16 @@ export function UserRow({
   return (
     <TableRow>
       <TableCell className="font-medium align-top">{user.name}</TableCell>
-      <TableCell className="align-top">{user.email}</TableCell>
+      <TableCell className="align-top font-mono text-sm">{user.username}</TableCell>
       <TableCell colSpan={5}>
         <form action={updateAction} className="space-y-2">
           <input name="id" type="hidden" value={user.id} />
+          <Input
+            defaultValue={user.username}
+            name="username"
+            placeholder="Username"
+            required
+          />
           <div className="grid gap-2 md:grid-cols-[1fr_1fr_1fr_auto_auto]">
             <Select defaultValue={user.role} name="role">
               {userRoles.map((role) => (

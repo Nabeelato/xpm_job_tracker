@@ -9,6 +9,7 @@ import {
   CircleX,
   FileUp,
   Home,
+  Search,
   User,
   Users,
 } from "lucide-react";
@@ -38,6 +39,7 @@ export const navSections: NavSection[] = [
       { href: "/jobs/my", label: "My Jobs", icon: User },
       { href: "/jobs/completed", label: "Completed", icon: CheckCircle2 },
       { href: "/jobs/cancelled", label: "Cancelled", icon: CircleX },
+      { href: "/jobs/ifza-check", label: "IFZA Check", icon: Search },
     ],
   },
   {

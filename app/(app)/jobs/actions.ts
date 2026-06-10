@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { getSystemSetting, setSystemSetting } from "@/lib/settings";
 import {
   AssignmentRole,
   AssignmentSource,
@@ -537,4 +538,14 @@ export async function bulkAssignJobRolesAction(formData: FormData) {
   });
 
   revalidatePath("/jobs");
+}
+
+export async function toggleAssignmentAgeAction() {
+  const user = await requireUser();
+  if (user.role !== "ADMIN") redirect("/dashboard");
+
+  const current = await getSystemSetting("showAssignmentAge");
+  await setSystemSetting("showAssignmentAge", current === "true" ? "false" : "true");
+  revalidatePath("/jobs");
+  revalidatePath("/dashboard");
 }

@@ -1,13 +1,10 @@
 import { EmptyState } from "@/components/empty-state";
+import { DiaryForm } from "@/components/diary-form";
 import { PageHeader } from "@/components/page-header";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Select } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
+import { Card, CardContent } from "@/components/ui/card";
 import { prisma } from "@/lib/db";
 import { canWriteDiary, requireUser } from "@/lib/rbac";
 import { formatDateTime } from "@/lib/utils";
-import { createDiaryEntryAction } from "./actions";
 
 export default async function DiaryPage() {
   const user = await requireUser();
@@ -34,27 +31,7 @@ export default async function DiaryPage() {
     <>
       <PageHeader description="Private notes visible to the recipient and the author." title="Diary Book" />
       <div className="grid gap-5 xl:grid-cols-[420px_1fr]">
-        {canWrite ? (
-          <Card>
-            <CardHeader>
-              <CardTitle>Write Entry</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <form action={createDiaryEntryAction} className="space-y-3">
-                <Select name="recipientId" required>
-                  <option value="">Select user</option>
-                  {users.map((candidate) => (
-                    <option key={candidate.id} value={candidate.id}>
-                      {candidate.name} ({candidate.role})
-                    </option>
-                  ))}
-                </Select>
-                <Textarea name="entry" placeholder="Diary note" required />
-                <Button type="submit">Add diary entry</Button>
-              </form>
-            </CardContent>
-          </Card>
-        ) : null}
+        {canWrite ? <DiaryForm users={users} /> : null}
 
         <div className="space-y-3">
           {entries.length ? (

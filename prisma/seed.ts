@@ -28,7 +28,7 @@ async function main() {
   if (ADMIN_EMAIL && ADMIN_PASSWORD && ADMIN_NAME) {
     const passwordHash = await bcrypt.hash(ADMIN_PASSWORD, 12);
     await prisma.user.upsert({
-      where: { email: ADMIN_EMAIL.toLowerCase() },
+      where: { username: ADMIN_EMAIL.toLowerCase() },
       update: {
         name: ADMIN_NAME,
         passwordHash,
@@ -38,7 +38,7 @@ async function main() {
       },
       create: {
         name: ADMIN_NAME,
-        email: ADMIN_EMAIL.toLowerCase(),
+        username: ADMIN_EMAIL.toLowerCase(),
         passwordHash,
         role: UserRole.ADMIN,
       },
@@ -51,7 +51,7 @@ async function main() {
 
   const managerSeedJson = process.env.DEPARTMENT_MANAGER_USERS_JSON;
   if (managerSeedJson) {
-    let managerSeeds: Array<{ name?: string; email?: string; password?: string; departmentCode?: string }>;
+    let managerSeeds: Array<{ name?: string; username?: string; email?: string; password?: string; departmentCode?: string }>;
     try {
       managerSeeds = JSON.parse(managerSeedJson);
     } catch {
@@ -64,23 +64,23 @@ async function main() {
 
     for (const manager of managerSeeds) {
       const name = manager.name?.trim();
-      const email = manager.email?.trim().toLowerCase();
+      const username = (manager.username ?? manager.email)?.trim().toLowerCase();
       const password = manager.password ?? "";
       const departmentCode = manager.departmentCode?.trim().toUpperCase();
-      if (!name || !email || password.length < 8 || !departmentCode) {
-        console.warn("Skipping department manager seed with missing name, email, password, or departmentCode.");
+      if (!name || !username || password.length < 8 || !departmentCode) {
+        console.warn("Skipping department manager seed with missing name, username/email, password, or departmentCode.");
         continue;
       }
 
       const department = await prisma.department.findUnique({ where: { code: departmentCode } });
       if (!department) {
-        console.warn(`Skipping ${email}; department ${departmentCode} does not exist.`);
+        console.warn(`Skipping ${username}; department ${departmentCode} does not exist.`);
         continue;
       }
 
       const passwordHash = await bcrypt.hash(password, 12);
       const user = await prisma.user.upsert({
-        where: { email },
+        where: { username },
         update: {
           name,
           passwordHash,
@@ -90,7 +90,7 @@ async function main() {
         },
         create: {
           name,
-          email,
+          username,
           passwordHash,
           role: UserRole.MANAGER,
           departmentId: department.id,

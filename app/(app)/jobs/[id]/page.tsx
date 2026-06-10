@@ -7,10 +7,11 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { assignmentRoles, internalStatuses } from "@/lib/constants";
+import { assignmentRoles, bookkeepingByLabels, bookkeepingSoftwareLabels, internalStatuses } from "@/lib/constants";
 import { prisma } from "@/lib/db";
 import { assertCanViewJob, canArchiveJobs, canAssignJobs, requireUser, visibleJobsWhere } from "@/lib/rbac";
 import { formatDateTime, titleCaseEnum } from "@/lib/utils";
+import { updateClientBookkeepingAction } from "@/app/(app)/clients/actions";
 import {
   addCommentAction,
   archiveJobAction,
@@ -40,7 +41,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
       internalStatus: true,
       missingFromLatestImport: true,
       lastSeenAt: true,
-      client: { select: { displayName: true } },
+      client: { select: { displayName: true, bookkeepingSoftware: true, bookkeepingBy: true } },
       finalDepartment: { select: { code: true } },
       autoDetectedDepartment: { select: { code: true } },
       assignments: {
@@ -302,6 +303,37 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
                   <Button type="submit" variant="outline">
                     Save department
                   </Button>
+                </form>
+              </CardContent>
+            </Card>
+          ) : null}
+
+          {canAssignJobs(user.role) ? (
+            <Card>
+              <CardHeader>
+                <CardTitle>Bookkeeping Software</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <form action={updateClientBookkeepingAction} className="space-y-3">
+                  <input name="clientId" type="hidden" value={job.clientId} />
+                  <input name="fromJobId" type="hidden" value={job.id} />
+                  <Select defaultValue={job.client.bookkeepingSoftware ?? ""} name="bookkeepingSoftware">
+                    <option value="">None</option>
+                    {(Object.keys(bookkeepingSoftwareLabels) as (keyof typeof bookkeepingSoftwareLabels)[]).map((key) => (
+                      <option key={key} value={key}>
+                        {bookkeepingSoftwareLabels[key]}
+                      </option>
+                    ))}
+                  </Select>
+                  <Select defaultValue={job.client.bookkeepingBy ?? ""} name="bookkeepingBy">
+                    <option value="">Not set</option>
+                    {(Object.keys(bookkeepingByLabels) as (keyof typeof bookkeepingByLabels)[]).map((key) => (
+                      <option key={key} value={key}>
+                        {bookkeepingByLabels[key]}
+                      </option>
+                    ))}
+                  </Select>
+                  <Button type="submit" variant="outline">Save software</Button>
                 </form>
               </CardContent>
             </Card>

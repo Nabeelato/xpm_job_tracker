@@ -30,7 +30,7 @@ export function CreateUserForm({
   return (
     <form action={formAction} className="space-y-3" ref={formRef}>
       <Input name="name" placeholder="Name" required />
-      <Input name="email" placeholder="Email" required type="email" />
+      <Input name="username" placeholder="Username (e.g. HashirShami1052)" required type="text" />
       <Input minLength={8} name="password" placeholder="Temporary password" required type="password" />
       <Select name="role" required>
         {userRoles.map((role) => (

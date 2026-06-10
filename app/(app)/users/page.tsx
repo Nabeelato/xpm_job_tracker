@@ -21,7 +21,7 @@ export default async function UsersPage({
       select: {
         id: true,
         name: true,
-        email: true,
+        username: true,
         role: true,
         departmentId: true,
         supervisorId: true,
@@ -54,7 +54,7 @@ export default async function UsersPage({
   const rows = users.map((user) => ({
     id: user.id,
     name: user.name,
-    email: user.email,
+    username: user.username,
     role: user.role,
     departmentId: user.departmentId,
     supervisorId: user.supervisorId,
@@ -113,7 +113,7 @@ export default async function UsersPage({
                 <TableHeader>
                   <TableRow>
                     <TableHead>Name</TableHead>
-                    <TableHead>Email</TableHead>
+                    <TableHead>Username</TableHead>
                     <TableHead>Role</TableHead>
                     <TableHead>Department</TableHead>
                     <TableHead>Supervisor</TableHead>

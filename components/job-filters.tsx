@@ -68,6 +68,11 @@ export function JobFilters({
       )}
       <Input defaultValue={params.get("sourceManager") ?? ""} name="sourceManager" placeholder="Source manager" />
       <Input defaultValue={params.get("sourcePartner") ?? ""} name="sourcePartner" placeholder="Source partner" />
+      <Select defaultValue={params.get("xpmSubState") ?? ""} name="xpmSubState">
+        <option value="">All job sub-states</option>
+        <option value="ifza_check">IFZA Check (3.2)</option>
+        <option value="job_on_hold">Job On Hold (3.1)</option>
+      </Select>
       <Select defaultValue={params.get("missing") ?? ""} name="missing">
         <option value="">Missing: any</option>
         <option value="true">Missing latest</option>
@@ -77,6 +82,10 @@ export function JobFilters({
         <option value="false">Active only</option>
         <option value="">Active and archived</option>
         <option value="true">Archived only</option>
+      </Select>
+      <Select defaultValue={params.get("sortBy") ?? ""} name="sortBy">
+        <option value="">Sort: default</option>
+        <option value="software">Sort: by software</option>
       </Select>
       <Button type="submit">Apply filters</Button>
     </form>

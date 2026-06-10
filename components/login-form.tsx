@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { ArrowRight, LockKeyhole, Mail } from "lucide-react";
+import { ArrowRight, LockKeyhole, User } from "lucide-react";
 import { signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -28,7 +28,7 @@ export function LoginForm() {
           });
 
           if (result?.error) {
-            setError("Invalid email, password, or inactive account.");
+            setError("Invalid username, password, or inactive account.");
             return;
           }
 
@@ -39,18 +39,18 @@ export function LoginForm() {
     >
       <div className="space-y-2">
         <label className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-300" htmlFor="email">
-          Email
+          Username
         </label>
         <div className="relative">
-          <Mail className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+          <User className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
           <Input
-            autoComplete="email"
+            autoComplete="username"
             className="h-10 rounded-2xl border-white/10 bg-white/5 pl-11 pr-4 text-[13px] text-white shadow-none placeholder:text-slate-500"
             id="email"
             name="email"
-            placeholder="name@company.com"
+            placeholder="e.g. HashirShami1052"
             required
-            type="email"
+            type="text"
           />
         </div>
       </div>
