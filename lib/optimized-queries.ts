@@ -1,4 +1,4 @@
-import { Prisma, type ClientCategory } from "@prisma/client";
+import { Prisma, type BookkeepingBy, type BookkeepingSoftware, type ClientCategory } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import type { AppSessionUser } from "@/lib/rbac";
 
@@ -39,6 +39,8 @@ export type ClientSummary = {
   id: string;
   displayName: string;
   category: ClientCategory | null;
+  bookkeepingSoftware: BookkeepingSoftware | null;
+  bookkeepingBy: BookkeepingBy | null;
   totalJobs: number;
   activeJobs: number;
   completedJobs: number;
@@ -55,6 +57,8 @@ type ClientSummaryRow = {
   id: string;
   displayName: string;
   category: ClientCategory | null;
+  bookkeepingSoftware: BookkeepingSoftware | null;
+  bookkeepingBy: BookkeepingBy | null;
   totalJobs: CountValue;
   activeJobs: CountValue;
   completedJobs: CountValue;
@@ -193,6 +197,8 @@ export async function getClientSummaries({
         c.id,
         c.display_name,
         c.category,
+        c.bookkeeping_software,
+        c.bookkeeping_by,
         j.archived,
         j.internal_status::text AS internal_status,
         j.missing_from_latest_import,
@@ -210,6 +216,8 @@ export async function getClientSummaries({
         id,
         display_name AS "displayName",
         category,
+        bookkeeping_software AS "bookkeepingSoftware",
+        bookkeeping_by AS "bookkeepingBy",
         COUNT(*)::int AS "totalJobs",
         (COUNT(*) FILTER (WHERE archived = FALSE))::int AS "activeJobs",
         (COUNT(*) FILTER (WHERE internal_status = 'COMPLETED'))::int AS "completedJobs",
@@ -221,7 +229,7 @@ export async function getClientSummaries({
         (COUNT(*) FILTER (WHERE department_code = 'QC' AND job_state_number IN (3, 4, 5, 6)))::int AS "qcJobs",
         (COUNT(*) FILTER (WHERE department_code = 'UNCLASSIFIED' AND job_state_number IN (3, 4, 5, 6)))::int AS "unclassifiedJobs"
       FROM visible_client_jobs
-      GROUP BY id, display_name, category
+      GROUP BY id, display_name, category, bookkeeping_software, bookkeeping_by
     ),
     filtered AS (
       SELECT *
@@ -243,6 +251,8 @@ export async function getClientSummaries({
       id: row.id,
       displayName: row.displayName,
       category: row.category,
+      bookkeepingSoftware: row.bookkeepingSoftware,
+      bookkeepingBy: row.bookkeepingBy,
       totalJobs: toNumber(row.totalJobs),
       activeJobs: toNumber(row.activeJobs),
       completedJobs: toNumber(row.completedJobs),
