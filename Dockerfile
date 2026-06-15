@@ -27,6 +27,7 @@ COPY --chown=node:node --from=build /app/package.json ./package.json
 COPY --chown=node:node --from=build /app/prisma ./prisma
 COPY --chown=node:node --from=build /app/prisma.config.ts ./prisma.config.ts
 COPY --chown=node:node --from=build /app/public ./public
+COPY --chown=node:node --from=build /app/scripts ./scripts
 COPY --chown=node:node --from=build /app/server.js ./server.js
 COPY docker/entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod 755 /usr/local/bin/docker-entrypoint.sh
