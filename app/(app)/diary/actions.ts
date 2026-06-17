@@ -19,11 +19,13 @@ export async function createDiaryEntryAction(formData: FormData) {
   if (!recipient?.active) return;
 
   await prisma.$transaction(async (tx) => {
+    const imageUrls = formData.getAll("imageUrls").map(String).filter(Boolean);
     const diaryEntry = await tx.diaryEntry.create({
       data: {
         recipientId,
         authorId: user.id,
         entry,
+        imageUrls,
       },
     });
     await createNotification(tx, {

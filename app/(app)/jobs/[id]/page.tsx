@@ -7,13 +7,13 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { JobComments } from "@/components/job-comments";
 import { assignmentRoles, bookkeepingByLabels, bookkeepingSoftwareLabels, internalStatuses } from "@/lib/constants";
 import { prisma } from "@/lib/db";
 import { assertCanViewJob, canArchiveJobs, canAssignJobs, requireUser, visibleJobsWhere } from "@/lib/rbac";
 import { formatDateTime, titleCaseEnum } from "@/lib/utils";
 import { updateClientBookkeepingAction } from "@/app/(app)/clients/actions";
 import {
-  addCommentAction,
   archiveJobAction,
   assignJobAction,
   deactivateAssignmentAction,
@@ -50,7 +50,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
         orderBy: { assignedAt: "desc" },
       },
       comments: {
-        select: { id: true, comment: true, createdAt: true, user: { select: { name: true } } },
+        select: { id: true, comment: true, imageUrls: true, createdAt: true, user: { select: { name: true } } },
         orderBy: { createdAt: "desc" },
       },
       changeLogs: {
@@ -162,26 +162,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
               <CardTitle>Comments</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <form action={addCommentAction} className="space-y-3">
-                <input name="jobId" type="hidden" value={job.id} />
-                <Textarea name="comment" placeholder="Add a comment" required />
-                <Button type="submit">Add comment</Button>
-              </form>
-              <div className="space-y-3">
-                {job.comments.length ? (
-                  job.comments.map((comment) => (
-                    <div className="rounded-md border bg-muted/30 p-3" key={comment.id}>
-                      <div className="mb-1 flex items-center justify-between text-xs text-muted-foreground">
-                        <span>{comment.user.name}</span>
-                        <span>{formatDateTime(comment.createdAt)}</span>
-                      </div>
-                      <p className="text-sm">{comment.comment}</p>
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-sm text-muted-foreground">No comments yet.</p>
-                )}
-              </div>
+              <JobComments comments={job.comments} jobId={job.id} />
             </CardContent>
           </Card>
 

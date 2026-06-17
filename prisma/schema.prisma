@@ -321,6 +321,7 @@ model JobComment {
   userId    String   @map("user_id")
   user      User     @relation(fields: [userId], references: [id])
   comment   String
+  imageUrls String[] @default([]) @map("image_urls")
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
@@ -370,6 +371,7 @@ model DiaryEntry {
   authorId     String         @map("author_id")
   author       User           @relation("DiaryAuthor", fields: [authorId], references: [id], onDelete: Cascade)
   entry        String
+  imageUrls    String[]       @default([]) @map("image_urls")
   createdAt    DateTime       @default(now()) @map("created_at")
   updatedAt    DateTime       @updatedAt @map("updated_at")
   notifications Notification[]

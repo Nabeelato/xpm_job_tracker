@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
+import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
 import { formatDistanceToNowStrict } from "date-fns";
 import type { BookkeepingBy, BookkeepingSoftware, ClientCategory } from "@prisma/client";
 import { bookkeepingSoftwareLabels } from "@/lib/constants";
@@ -50,6 +51,8 @@ export function JobsTableClient({
   staffBySupervisorId,
   showAssignmentAge = false,
   userWorkload = {},
+  sortBy = "",
+  sortDir = "asc",
 }: {
   jobs: JobRow[];
   isAdmin: boolean;
@@ -60,11 +63,33 @@ export function JobsTableClient({
   staffBySupervisorId: Record<string, RoleUser[]>;
   showAssignmentAge?: boolean;
   userWorkload?: Record<string, Record<string, number>>;
+  sortBy?: string;
+  sortDir?: "asc" | "desc";
 }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [modalOpen, setModalOpen] = useState(false);
   const [assigningJobId, setAssigningJobId] = useState<string | null>(null);
   const router = useRouter();
+  const searchParams = useSearchParams();
+
+  function handleSort(col: string) {
+    const params = new URLSearchParams(searchParams.toString());
+    if (params.get("sortBy") === col) {
+      params.set("sortDir", params.get("sortDir") === "asc" ? "desc" : "asc");
+    } else {
+      params.set("sortBy", col);
+      params.set("sortDir", "asc");
+    }
+    params.delete("page");
+    router.push(`?${params.toString()}`);
+  }
+
+  function SortIcon({ col }: { col: string }) {
+    if (sortBy !== col) return <ArrowUpDown className="ml-1 inline h-3.5 w-3.5 text-muted-foreground/50" />;
+    return sortDir === "asc"
+      ? <ArrowUp className="ml-1 inline h-3.5 w-3.5" />
+      : <ArrowDown className="ml-1 inline h-3.5 w-3.5" />;
+  }
 
   useEffect(() => {
     const id = setInterval(() => router.refresh(), 30_000);
@@ -169,11 +194,11 @@ export function JobsTableClient({
                   />
                 </TableHead>
               ) : null}
-              <TableHead>Job No.</TableHead>
-              <TableHead>Client</TableHead>
-              <TableHead>Job Name</TableHead>
-              <TableHead>Department</TableHead>
-              <TableHead>Source State</TableHead>
+              <TableHead className="cursor-pointer select-none hover:bg-muted/50" onClick={() => handleSort("jobNo")}>Job No.<SortIcon col="jobNo" /></TableHead>
+              <TableHead className="cursor-pointer select-none hover:bg-muted/50" onClick={() => handleSort("client")}>Client<SortIcon col="client" /></TableHead>
+              <TableHead className="cursor-pointer select-none hover:bg-muted/50" onClick={() => handleSort("jobName")}>Job Name<SortIcon col="jobName" /></TableHead>
+              <TableHead className="cursor-pointer select-none hover:bg-muted/50" onClick={() => handleSort("department")}>Department<SortIcon col="department" /></TableHead>
+              <TableHead className="cursor-pointer select-none hover:bg-muted/50" onClick={() => handleSort("state")}>Source State<SortIcon col="state" /></TableHead>
               <TableHead>Manager</TableHead>
               <TableHead>Supervisor</TableHead>
               <TableHead>Staff</TableHead>

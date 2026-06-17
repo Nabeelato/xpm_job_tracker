@@ -120,11 +120,13 @@ export async function addCommentAction(formData: FormData) {
 
   const { user, job } = await getVisibleJobOrRedirect(jobId);
   await prisma.$transaction(async (tx) => {
+    const imageUrls = formData.getAll("imageUrls").map(String).filter(Boolean);
     await tx.jobComment.create({
       data: {
         jobId: job.id,
         userId: user.id,
         comment,
+        imageUrls,
       },
     });
 

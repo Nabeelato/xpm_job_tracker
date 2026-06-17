@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import type { Prisma } from "@prisma/client";
 import { EmptyState } from "@/components/empty-state";
 import { JobFilters } from "@/components/job-filters";
@@ -59,6 +60,7 @@ export async function JobListPage({
   const archivedParam = searchParam(rawParams, "archived") ?? "false";
   const xpmSubState = searchParam(rawParams, "xpmSubState") as XpmSubState | null;
   const sortBy = searchParam(rawParams, "sortBy");
+  const sortDir = (searchParam(rawParams, "sortDir") ?? "asc") as "asc" | "desc";
 
   const and: Prisma.JobWhereInput[] = [visibleJobsWhere(user)];
   if (effectivePreset.myJobs) and.push({ assignments: { some: { userId: user.id, active: true } } });
@@ -129,9 +131,17 @@ export async function JobListPage({
           orderBy: { assignedAt: "desc" },
         },
       },
-      orderBy: sortBy === "software"
-        ? [{ client: { bookkeepingSoftware: "asc" } }, { jobIdFromExcel: "asc" }]
-        : [{ missingFromLatestImport: "desc" }, { jobIdFromExcel: "asc" }],
+      orderBy: (() => {
+        const dir = sortDir === "desc" ? "desc" : "asc";
+        switch (sortBy) {
+          case "jobNo":       return [{ jobIdFromExcel: dir }] as Prisma.JobOrderByWithRelationInput[];
+          case "client":     return [{ client: { displayName: dir } }, { jobIdFromExcel: "asc" }] as Prisma.JobOrderByWithRelationInput[];
+          case "jobName":    return [{ jobName: dir }, { jobIdFromExcel: "asc" }] as Prisma.JobOrderByWithRelationInput[];
+          case "department": return [{ finalDepartment: { code: dir } }, { jobIdFromExcel: "asc" }] as Prisma.JobOrderByWithRelationInput[];
+          case "state":      return [{ jobStateNumber: dir }, { jobIdFromExcel: "asc" }] as Prisma.JobOrderByWithRelationInput[];
+          default:           return [{ missingFromLatestImport: "desc" }, { jobIdFromExcel: "asc" }] as Prisma.JobOrderByWithRelationInput[];
+        }
+      })(),
       skip: (page - 1) * pageSize,
       take: pageSize,
     }),
@@ -207,11 +217,14 @@ export async function JobListPage({
           title="No jobs found"
         />
       ) : (
+        <Suspense fallback={null}>
         <JobsTableClient
           currentUserId={user.id}
           isAdmin={isAdmin}
           isSupervisor={isSupervisor}
           showAssignmentAge={showAssignmentAge}
+          sortBy={sortBy ?? ""}
+          sortDir={sortDir}
           jobs={jobs.map((j): JobRow => {
             const supervisorUserId =
               j.assignments.find((a) => a.assignmentRole === "SUPERVISOR")?.user.id ?? null;
@@ -244,6 +257,7 @@ export async function JobListPage({
           supervisorUsers={supervisorUsers}
           userWorkload={userWorkload}
         />
+        </Suspense>
       )}
       <Pagination basePath={basePath} page={page} pageSize={pageSize} params={params} total={total} />
     </>

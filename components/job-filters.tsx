@@ -83,10 +83,8 @@ export function JobFilters({
         <option value="">Active and archived</option>
         <option value="true">Archived only</option>
       </Select>
-      <Select defaultValue={params.get("sortBy") ?? ""} name="sortBy">
-        <option value="">Sort: default</option>
-        <option value="software">Sort: by software</option>
-      </Select>
+      {params.get("sortBy") ? <input name="sortBy" type="hidden" value={params.get("sortBy") ?? ""} /> : null}
+      {params.get("sortDir") ? <input name="sortDir" type="hidden" value={params.get("sortDir") ?? ""} /> : null}
       <Button type="submit">Apply filters</Button>
     </form>
   );
