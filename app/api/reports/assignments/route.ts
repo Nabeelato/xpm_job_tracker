@@ -1,35 +1,51 @@
 import { NextRequest, NextResponse } from "next/server";
-import * as XLSX from "xlsx";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
+import {
+  addReportWorksheet,
+  createReportWorkbook,
+  invalidDateResponse,
+  parseDateBoundary,
+  reportLimitResponse,
+  REPORT_EXPORT_LIMIT,
+  reportScopeWhere,
+  workbookResponse,
+} from "@/lib/reports";
 import { getCurrentUser } from "@/lib/rbac";
+import { formatDateTime } from "@/lib/utils";
 
 export async function GET(req: NextRequest) {
   const user = await getCurrentUser();
-  if (!user || (user.role !== "ADMIN" && user.role !== "MANAGER")) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { searchParams } = req.nextUrl;
   const fromDate = searchParams.get("from") ?? undefined;
   const toDate = searchParams.get("to") ?? undefined;
   const roleFilter = searchParams.get("role") ?? undefined;
   const nameSearch = searchParams.get("name") ?? undefined;
+  const changedById = searchParams.get("changedById") ?? undefined;
+  const from = parseDateBoundary(fromDate);
+  const to = parseDateBoundary(toDate, true);
+
+  if (from === "invalid") return invalidDateResponse("From");
+  if (to === "invalid") return invalidDateResponse("To");
 
   const where: Prisma.JobChangeLogWhereInput = {
+    job: reportScopeWhere(user),
     fieldName: roleFilter === "supervisor"
       ? "supervisor_assignment"
       : roleFilter === "staff"
         ? "staff_assignment"
         : { in: ["supervisor_assignment", "staff_assignment"] },
-    ...(fromDate || toDate
+    ...(from || to
       ? {
           changedAt: {
-            ...(fromDate ? { gte: new Date(fromDate) } : {}),
-            ...(toDate ? { lte: new Date(`${toDate}T23:59:59`) } : {}),
+            ...(from ? { gte: from } : {}),
+            ...(to ? { lte: to } : {}),
           },
         }
       : {}),
+    ...(changedById ? { changedById } : {}),
     ...(nameSearch
       ? {
           OR: [
@@ -40,10 +56,13 @@ export async function GET(req: NextRequest) {
       : {}),
   };
 
+  const total = await prisma.jobChangeLog.count({ where });
+  if (total > REPORT_EXPORT_LIMIT) return reportLimitResponse(total);
+
   const logs = await prisma.jobChangeLog.findMany({
     where,
     orderBy: { changedAt: "desc" },
-    take: 5000,
+    take: REPORT_EXPORT_LIMIT,
     select: {
       changedAt: true,
       fieldName: true,
@@ -59,25 +78,41 @@ export async function GET(req: NextRequest) {
     },
   });
 
-  const rows = logs.map((log) => ({
-    Date: new Date(log.changedAt).toLocaleString("en-GB"),
-    "Job No.": log.job.jobIdFromExcel,
-    Client: log.job.client.displayName,
-    Role: log.fieldName === "supervisor_assignment" ? "Supervisor" : "Staff",
-    "Assigned From": log.oldValue ?? "",
-    "Assigned To": log.newValue ?? "",
-    "Changed By": log.changedBy?.name ?? "",
-  }));
-
-  const ws = XLSX.utils.json_to_sheet(rows);
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, "Assignment History");
-  const buf = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
-
-  return new NextResponse(buf, {
-    headers: {
-      "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      "Content-Disposition": `attachment; filename="assignment-history-${new Date().toISOString().slice(0, 10)}.xlsx"`,
-    },
+  const workbook = createReportWorkbook({
+    title: "Assignment Change History",
+    generatedBy: user.name,
+    filters: [
+      { label: "From", value: fromDate },
+      { label: "To", value: toDate },
+      { label: "Role", value: roleFilter },
+      { label: "Name Search", value: nameSearch },
+      { label: "Changed By", value: changedById },
+      { label: "Rows", value: total },
+    ],
   });
+
+  addReportWorksheet(
+    workbook,
+    "Assignment History",
+    [
+      { header: "Date", key: "date", width: 22 },
+      { header: "Job No.", key: "jobNo", width: 16 },
+      { header: "Client", key: "client", width: 34 },
+      { header: "Role", key: "role", width: 14 },
+      { header: "Assigned From", key: "assignedFrom", width: 24 },
+      { header: "Assigned To", key: "assignedTo", width: 24 },
+      { header: "Changed By", key: "changedBy", width: 24 },
+    ],
+    logs.map((log) => ({
+      date: formatDateTime(log.changedAt),
+      jobNo: log.job.jobIdFromExcel,
+      client: log.job.client.displayName,
+      role: log.fieldName === "supervisor_assignment" ? "Supervisor" : "Staff",
+      assignedFrom: log.oldValue ?? "",
+      assignedTo: log.newValue ?? "Unassigned",
+      changedBy: log.changedBy?.name ?? "",
+    })),
+  );
+
+  return workbookResponse(workbook, `assignment-history-${new Date().toISOString().slice(0, 10)}.xlsx`);
 }

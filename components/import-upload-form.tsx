@@ -1,7 +1,7 @@
 "use client";
 
 import { Upload } from "lucide-react";
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { FormSubmitButton } from "@/components/form-submit-button";
 import { Input } from "@/components/ui/input";
 import { maxUploadSizeBytes, requiredUploadHeaders } from "@/lib/constants";
@@ -28,12 +28,15 @@ export function ImportUploadForm({
   action,
   errorCode,
   lastAppliedXpmAt,
+  allowOverride = false,
 }: {
   action: (formData: FormData) => void;
   errorCode?: string;
   lastAppliedXpmAt?: string | null;
+  allowOverride?: boolean;
 }) {
   const defaultValue = useMemo(() => nowInputDateTime(), []);
+  const [overrideXpmDate, setOverrideXpmDate] = useState(false);
   const minValue = useMemo(() => {
     if (!lastAppliedXpmAt) return undefined;
     const d = new Date(lastAppliedXpmAt);
@@ -73,7 +76,7 @@ export function ImportUploadForm({
           dateInputRef.current?.focus();
           return;
         }
-        if (lastAppliedXpmAt) {
+        if (!overrideXpmDate && lastAppliedXpmAt) {
           const last = new Date(lastAppliedXpmAt);
           if (!Number.isNaN(last.getTime()) && picked.getTime() <= last.getTime()) {
             event.preventDefault();
@@ -92,13 +95,31 @@ export function ImportUploadForm({
           defaultValue={defaultValue}
           id="xpmDownloadedAt"
           max={nowInputDateTime()}
-          min={minValue}
+          min={overrideXpmDate ? undefined : minValue}
           name="xpmDownloadedAt"
           ref={dateInputRef}
           required
           type="datetime-local"
         />
       </div>
+      {allowOverride ? (
+        <label className="flex items-start gap-3 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
+          <input
+            checked={overrideXpmDate}
+            className="mt-1"
+            name="overrideXpmDate"
+            onChange={(event) => setOverrideXpmDate(event.target.checked)}
+            type="checkbox"
+            value="true"
+          />
+          <span>
+            <span className="block font-medium">Admin override: allow older or same XPM file date</span>
+            <span className="mt-1 block text-xs text-amber-900">
+              Use this only to recover from a failed/crashed import. Future dates are still blocked.
+            </span>
+          </span>
+        </label>
+      ) : null}
       <div className="space-y-2">
         <label className="text-sm font-medium" htmlFor="file">
           CSV or XLSX file

@@ -52,6 +52,8 @@ type CountValue = number | bigint | string | null;
 
 type DashboardMetricsRow = Record<keyof DashboardMetrics, CountValue>;
 
+export type JobDataScope = "visible" | "report";
+
 
 type ClientSummaryRow = {
   id: string;
@@ -76,8 +78,49 @@ function toNumber(value: CountValue) {
   return Number(value ?? 0);
 }
 
-function visibleJobsSql(user: AppSessionUser) {
+function scopedJobsSql(user: AppSessionUser, scope: JobDataScope = "visible") {
   if (user.role === "ADMIN" || user.departmentCode === "QC") return Prisma.sql`TRUE`;
+
+  if (scope === "report" && user.role === "MANAGER") {
+    if (!user.departmentId) {
+      return Prisma.sql`EXISTS (
+        SELECT 1
+        FROM job_assignments visible_assignment
+        WHERE visible_assignment.job_id = j.id
+          AND visible_assignment.user_id = ${user.id}
+          AND visible_assignment.active = TRUE
+      )`;
+    }
+
+    return Prisma.sql`(
+      j.final_department_id = ${user.departmentId}
+      OR EXISTS (
+        SELECT 1
+        FROM job_assignments report_assignment
+        LEFT JOIN users report_user ON report_user.id = report_assignment.user_id
+        WHERE report_assignment.job_id = j.id
+          AND report_assignment.active = TRUE
+          AND (
+            report_assignment.user_id = ${user.id}
+            OR report_user.department_id = ${user.departmentId}
+          )
+      )
+    )`;
+  }
+
+  if (scope === "report" && user.role === "SUPERVISOR") {
+    return Prisma.sql`EXISTS (
+      SELECT 1
+      FROM job_assignments report_assignment
+      LEFT JOIN users report_user ON report_user.id = report_assignment.user_id
+      WHERE report_assignment.job_id = j.id
+        AND report_assignment.active = TRUE
+        AND (
+          report_assignment.user_id = ${user.id}
+          OR report_user.supervisor_id = ${user.id}
+        )
+    )`;
+  }
 
   return Prisma.sql`EXISTS (
     SELECT 1
@@ -121,7 +164,7 @@ export async function getDashboardMetrics(user: AppSessionUser): Promise<Dashboa
         d.code AS department_code
       FROM jobs j
       JOIN departments d ON d.id = j.final_department_id
-      WHERE ${visibleJobsSql(user)}
+      WHERE ${scopedJobsSql(user)}
     ),
     client_counts AS (
       SELECT client_id, COUNT(*) AS job_count
@@ -175,12 +218,18 @@ export async function getClientSummaries({
   user,
   query,
   filter,
+  bookkeepingSoftware,
+  bookkeepingBy,
+  scope = "visible",
   page,
   pageSize,
 }: {
   user: AppSessionUser;
   query?: string;
   filter?: ClientFilter | string | null;
+  bookkeepingSoftware?: BookkeepingSoftware | string | null;
+  bookkeepingBy?: BookkeepingBy | string | null;
+  scope?: JobDataScope;
   page: number;
   pageSize: number;
 }) {
@@ -188,6 +237,12 @@ export async function getClientSummaries({
   const searchPattern = query ? `%${query}%` : "";
   const searchSql = query
     ? Prisma.sql`AND (c.display_name ILIKE ${searchPattern} OR c.source_client_name ILIKE ${searchPattern})`
+    : Prisma.empty;
+  const bookkeepingSoftwareSql = bookkeepingSoftware
+    ? Prisma.sql`AND c.bookkeeping_software::text = ${bookkeepingSoftware}`
+    : Prisma.empty;
+  const bookkeepingBySql = bookkeepingBy
+    ? Prisma.sql`AND c.bookkeeping_by::text = ${bookkeepingBy}`
     : Prisma.empty;
   const filterSql = clientFilterSql(filter);
 
@@ -208,8 +263,10 @@ export async function getClientSummaries({
       FROM clients c
       JOIN jobs j ON j.client_id = c.id
       JOIN departments d ON d.id = j.final_department_id
-      WHERE ${visibleJobsSql(user)}
+      WHERE ${scopedJobsSql(user, scope)}
       ${searchSql}
+      ${bookkeepingSoftwareSql}
+      ${bookkeepingBySql}
     ),
     client_summaries AS (
       SELECT

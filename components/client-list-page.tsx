@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Download } from "lucide-react";
 import { ClientBookkeepingInline } from "@/components/client-bookkeeping-inline";
 import { ClientFilters } from "@/components/client-filters";
 import { DepartmentBadge } from "@/components/department-badge";
@@ -6,6 +7,7 @@ import { EmptyState } from "@/components/empty-state";
 import { PageHeader } from "@/components/page-header";
 import { Pagination } from "@/components/pagination";
 import { Badge } from "@/components/ui/badge";
+import { buttonVariants } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { bookkeepingByLabels, bookkeepingSoftwareLabels, clientCategoryLabels } from "@/lib/constants";
 import { getClientSummaries, type ClientFilter } from "@/lib/optimized-queries";
@@ -37,12 +39,38 @@ export async function ClientListPage({
   const pageSize = 25;
   const query = searchParam(rawParams, "q");
   const filter = presetFilter ?? searchParam(rawParams, "filter");
-  const { summaries, total } = await getClientSummaries({ user, query, filter, page, pageSize });
+  const bookkeepingSoftware = searchParam(rawParams, "bookkeepingSoftware");
+  const bookkeepingBy = searchParam(rawParams, "bookkeepingBy");
+  const { summaries, total } = await getClientSummaries({
+    user,
+    query,
+    filter,
+    bookkeepingSoftware,
+    bookkeepingBy,
+    page,
+    pageSize,
+  });
+
+  const exportParams = new URLSearchParams(params);
+  if (presetFilter) exportParams.set("filter", presetFilter);
+  exportParams.delete("page");
+  exportParams.set("scope", "visible");
+  const exportHref = `/api/reports/clients/export${exportParams.toString() ? `?${exportParams.toString()}` : ""}`;
 
   return (
     <>
       <PageHeader title={title} description={description} />
       <ClientFilters params={params} />
+      <div className="mb-4 flex flex-col gap-3 rounded-lg border bg-muted/30 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
+        <span className="text-muted-foreground">
+          Showing <span className="font-medium text-foreground">{summaries.length}</span> of{" "}
+          <span className="font-medium text-foreground">{total}</span> matching clients
+        </span>
+        <Link className={cn(buttonVariants({ variant: "outline" }), "self-start")} href={exportHref}>
+          <Download className="h-4 w-4" />
+          Export Excel
+        </Link>
+      </div>
       {summaries.length === 0 ? (
         <EmptyState title="No clients found" description="Try a different client filter or upload the latest source file." />
       ) : (

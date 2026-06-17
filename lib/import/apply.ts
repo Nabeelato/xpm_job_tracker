@@ -59,7 +59,11 @@ function departmentMap(departments: Department[]) {
   return new Map(departments.map((department) => [department.code, department]));
 }
 
-export async function applyImportBatch(importBatchId: string, changedById: string) {
+export async function applyImportBatch(
+  importBatchId: string,
+  changedById: string,
+  options: { allowOlderXpmDownloadedAt?: boolean } = {},
+) {
   return prisma.$transaction(
     async (tx) => {
       const batch = await tx.importBatch.findUnique({
@@ -76,6 +80,7 @@ export async function applyImportBatch(importBatchId: string, changedById: strin
         select: { xpmDownloadedAt: true },
       });
       if (
+        !options.allowOlderXpmDownloadedAt &&
         lastApplied?.xpmDownloadedAt &&
         batch.xpmDownloadedAt &&
         batch.xpmDownloadedAt <= lastApplied.xpmDownloadedAt

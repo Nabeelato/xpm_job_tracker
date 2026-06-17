@@ -2,6 +2,10 @@ import { Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
+import { bookkeepingByLabels, bookkeepingSoftwareLabels } from "@/lib/constants";
+
+const bookkeepingSoftwareOptions = Object.entries(bookkeepingSoftwareLabels);
+const bookkeepingByOptions = Object.entries(bookkeepingByLabels);
 
 export function ClientFilters({ params }: { params: URLSearchParams }) {
   return (
@@ -32,6 +36,22 @@ export function ClientFilters({ params }: { params: URLSearchParams }) {
           <option value="multiple">Multiple jobs</option>
           <option value="missing">Missing jobs</option>
         </optgroup>
+      </Select>
+      <Select defaultValue={params.get("bookkeepingSoftware") ?? ""} name="bookkeepingSoftware">
+        <option value="">Any software</option>
+        {bookkeepingSoftwareOptions.map(([value, label]) => (
+          <option key={value} value={value}>
+            {label}
+          </option>
+        ))}
+      </Select>
+      <Select defaultValue={params.get("bookkeepingBy") ?? ""} name="bookkeepingBy">
+        <option value="">Bookkeeping by anyone</option>
+        {bookkeepingByOptions.map(([value, label]) => (
+          <option key={value} value={value}>
+            {label}
+          </option>
+        ))}
       </Select>
       <Button type="submit">Apply filters</Button>
     </form>

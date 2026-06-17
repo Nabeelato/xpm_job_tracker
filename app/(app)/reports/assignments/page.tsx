@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/rbac";
+import { reportScopeWhere, reportUserScopeWhere } from "@/lib/reports";
 
 export default async function AssignmentHistoryPage({
   searchParams,
@@ -12,18 +13,16 @@ export default async function AssignmentHistoryPage({
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const user = await requireUser();
-  if (user.role !== "ADMIN" && user.role !== "MANAGER") {
-    const { redirect } = await import("next/navigation");
-    redirect("/dashboard");
-  }
 
   const raw = (await searchParams) ?? {};
   const fromDate = typeof raw.from === "string" && raw.from ? raw.from : undefined;
   const toDate = typeof raw.to === "string" && raw.to ? raw.to : undefined;
   const roleFilter = typeof raw.role === "string" && raw.role ? raw.role : undefined;
   const nameSearch = typeof raw.name === "string" && raw.name ? raw.name.trim() : undefined;
+  const changedById = typeof raw.changedById === "string" && raw.changedById ? raw.changedById : undefined;
 
   const where: Prisma.JobChangeLogWhereInput = {
+    job: reportScopeWhere(user),
     fieldName: roleFilter === "supervisor"
       ? "supervisor_assignment"
       : roleFilter === "staff"
@@ -37,6 +36,7 @@ export default async function AssignmentHistoryPage({
           },
         }
       : {}),
+    ...(changedById ? { changedById } : {}),
     ...(nameSearch
       ? {
           OR: [
@@ -47,32 +47,40 @@ export default async function AssignmentHistoryPage({
       : {}),
   };
 
-  const logs = await prisma.jobChangeLog.findMany({
-    where,
-    orderBy: { changedAt: "desc" },
-    take: 200,
-    select: {
-      id: true,
-      changedAt: true,
-      fieldName: true,
-      oldValue: true,
-      newValue: true,
-      changedBy: { select: { name: true } },
-      job: {
-        select: {
-          id: true,
-          jobIdFromExcel: true,
-          client: { select: { displayName: true } },
+  const [logs, users] = await Promise.all([
+    prisma.jobChangeLog.findMany({
+      where,
+      orderBy: { changedAt: "desc" },
+      take: 200,
+      select: {
+        id: true,
+        changedAt: true,
+        fieldName: true,
+        oldValue: true,
+        newValue: true,
+        changedBy: { select: { name: true } },
+        job: {
+          select: {
+            id: true,
+            jobIdFromExcel: true,
+            client: { select: { displayName: true } },
+          },
         },
       },
-    },
-  });
+    }),
+    prisma.user.findMany({
+      where: { active: true, AND: [reportUserScopeWhere(user)] },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true },
+    }),
+  ]);
 
   const currentParams = new URLSearchParams();
   if (fromDate) currentParams.set("from", fromDate);
   if (toDate) currentParams.set("to", toDate);
   if (roleFilter) currentParams.set("role", roleFilter);
   if (nameSearch) currentParams.set("name", nameSearch);
+  if (changedById) currentParams.set("changedById", changedById);
 
   return (
     <>
@@ -123,6 +131,21 @@ export default async function AssignmentHistoryPage({
                 placeholder="Assigned to..."
                 type="text"
               />
+            </label>
+            <label className="flex flex-col gap-1 text-xs">
+              <span className="text-muted-foreground">Changed by</span>
+              <select
+                className="rounded-md border border-input bg-background px-2 py-1 text-sm"
+                defaultValue={changedById ?? ""}
+                name="changedById"
+              >
+                <option value="">Anyone</option>
+                {users.map((changedBy) => (
+                  <option key={changedBy.id} value={changedBy.id}>
+                    {changedBy.name}
+                  </option>
+                ))}
+              </select>
             </label>
             <button
               className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90"

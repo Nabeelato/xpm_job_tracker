@@ -42,6 +42,7 @@ export default async function UploadImportPage({
             )}
           </div>
           <ImportUploadForm
+            allowOverride
             action={stageImportAction}
             errorCode={error}
             lastAppliedXpmAt={lastApplied?.xpmDownloadedAt?.toISOString() ?? null}

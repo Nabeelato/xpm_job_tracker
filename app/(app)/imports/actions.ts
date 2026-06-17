@@ -21,6 +21,7 @@ function parseInputDateTime(value: FormDataEntryValue | null) {
 export async function stageImportAction(formData: FormData) {
   const user = await requireRole(["ADMIN"]);
   const xpmDownloadedAt = parseInputDateTime(formData.get("xpmDownloadedAt"));
+  const overrideXpmDate = formData.get("overrideXpmDate") === "true";
   if (!xpmDownloadedAt) redirect("/imports/upload?error=missing-download-date");
 
   if (xpmDownloadedAt.date.getTime() > Date.now()) {
@@ -32,7 +33,7 @@ export async function stageImportAction(formData: FormData) {
     orderBy: { xpmDownloadedAt: "desc" },
     select: { xpmDownloadedAt: true },
   });
-  if (lastApplied?.xpmDownloadedAt && xpmDownloadedAt.date <= lastApplied.xpmDownloadedAt) {
+  if (!overrideXpmDate && lastApplied?.xpmDownloadedAt && xpmDownloadedAt.date <= lastApplied.xpmDownloadedAt) {
     redirect("/imports/upload?error=download-date-not-newer");
   }
 
@@ -40,15 +41,24 @@ export async function stageImportAction(formData: FormData) {
   if (!(file instanceof File)) throw new Error("Upload file is required.");
 
   const batch = await stageImportBatch(file, user.id, xpmDownloadedAt.date);
-  redirect(`/imports/${batch.id}/preview`);
+  const suffix = overrideXpmDate ? "?overrideXpmDate=true" : "";
+  redirect(`/imports/${batch.id}/preview${suffix}`);
 }
 
 export async function confirmImportAction(formData: FormData) {
   const user = await requireRole(["ADMIN"]);
   const batchId = String(formData.get("batchId") ?? "");
+  const overrideXpmDate = formData.get("overrideXpmDate") === "true";
   if (!batchId) throw new Error("Import batch is required.");
 
-  await applyImportBatch(batchId, user.id);
+  try {
+    await applyImportBatch(batchId, user.id, { allowOlderXpmDownloadedAt: overrideXpmDate });
+  } catch (error) {
+    if (error instanceof Error && error.message === "This XPM file is not newer than the previously applied import.") {
+      redirect(`/imports/${batchId}/preview?error=download-date-not-newer`);
+    }
+    throw error;
+  }
   revalidatePath("/");
   redirect(`/imports/${batchId}`);
 }

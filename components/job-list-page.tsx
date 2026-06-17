@@ -1,16 +1,19 @@
+import Link from "next/link";
 import { Suspense } from "react";
-import type { Prisma } from "@prisma/client";
+import { Download } from "lucide-react";
 import { EmptyState } from "@/components/empty-state";
 import { JobFilters } from "@/components/job-filters";
 import { JobFilterTabs, type JobTabsConfig } from "@/components/job-filter-tabs";
 import { JobsTableClient, type JobRow } from "@/components/jobs-table-client";
 import { PageHeader } from "@/components/page-header";
 import { Pagination } from "@/components/pagination";
+import { buttonVariants } from "@/components/ui/button";
 import { prisma } from "@/lib/db";
-import { stateGroupWhere, xpmSubStateWhere, type JobStateGroup, type XpmSubState } from "@/lib/job-state";
+import type { JobStateGroup } from "@/lib/job-state";
+import { buildJobReportOrderBy, buildJobReportWhere } from "@/lib/reports";
 import { getSystemSetting } from "@/lib/settings";
-import { requireUser, visibleJobsWhere } from "@/lib/rbac";
-import { searchParam, toInt } from "@/lib/utils";
+import { requireUser } from "@/lib/rbac";
+import { cn, searchParam, toInt } from "@/lib/utils";
 
 type Preset = {
   department?: string;
@@ -20,6 +23,16 @@ type Preset = {
   stateNumbers?: number[];
   tabs?: JobTabsConfig;
 };
+
+function paramsWithPreset(params: URLSearchParams, preset: Preset) {
+  const next = new URLSearchParams(params);
+  if (preset.department) next.set("department", preset.department);
+  if (preset.missing !== undefined) next.set("missing", String(preset.missing));
+  if (preset.myJobs) next.set("myJobs", "true");
+  if (preset.stateGroup) next.set("stateGroup", preset.stateGroup);
+  if (preset.stateNumbers?.length) next.set("stateNumbers", preset.stateNumbers.join(","));
+  return next;
+}
 
 export async function JobListPage({
   title,
@@ -47,63 +60,10 @@ export async function JobListPage({
 
   const page = toInt(searchParam(rawParams, "page"), 1);
   const pageSize = 25;
-  const query = searchParam(rawParams, "q");
-  const department = effectivePreset.department ?? searchParam(rawParams, "department");
-  const jobStateNumber = toInt(searchParam(rawParams, "jobStateNumber"), 0);
-  const stateSet = searchParam(rawParams, "stateSet");
-  const priority = searchParam(rawParams, "priority");
-  const assignedUserId = searchParam(rawParams, "assignedUserId");
-  const sourceManager = searchParam(rawParams, "sourceManager");
-  const sourcePartner = searchParam(rawParams, "sourcePartner");
-  const missingParam =
-    effectivePreset.missing === undefined ? searchParam(rawParams, "missing") : String(effectivePreset.missing);
-  const archivedParam = searchParam(rawParams, "archived") ?? "false";
-  const xpmSubState = searchParam(rawParams, "xpmSubState") as XpmSubState | null;
+  const filterParams = paramsWithPreset(params, effectivePreset);
   const sortBy = searchParam(rawParams, "sortBy");
   const sortDir = (searchParam(rawParams, "sortDir") ?? "asc") as "asc" | "desc";
-
-  const and: Prisma.JobWhereInput[] = [visibleJobsWhere(user)];
-  if (effectivePreset.myJobs) and.push({ assignments: { some: { userId: user.id, active: true } } });
-  if (query) {
-    and.push({
-      OR: [
-        { jobIdFromExcel: { contains: query, mode: "insensitive" } },
-        { jobName: { contains: query, mode: "insensitive" } },
-        { client: { displayName: { contains: query, mode: "insensitive" } } },
-      ],
-    });
-  }
-  if (department) and.push({ finalDepartment: { code: department } });
-  if (
-    jobStateNumber > 0 &&
-    (!effectivePreset.stateNumbers?.length || effectivePreset.stateNumbers.includes(jobStateNumber))
-  ) {
-    and.push({ jobStateNumber });
-  } else if (effectivePreset.stateNumbers?.length) {
-    and.push({ jobStateNumber: { in: effectivePreset.stateNumbers } });
-  } else if (!effectivePreset.stateGroup && stateSet === "main") {
-    and.push({ jobStateNumber: { in: [2, 3, 4, 5, 6] } });
-  } else if (!effectivePreset.stateGroup && stateSet === "workflow") {
-    and.push({ jobStateNumber: { in: [3, 4, 5, 6] } });
-  } else if (!effectivePreset.stateGroup && stateSet === "other") {
-    and.push(stateGroupWhere("OTHER"));
-  }
-  if (effectivePreset.stateGroup) and.push(stateGroupWhere(effectivePreset.stateGroup));
-  if (priority) and.push({ priority: { contains: priority, mode: "insensitive" } });
-  if (assignedUserId === "unassigned") {
-    and.push({ assignments: { none: { active: true } } });
-  } else if (assignedUserId) {
-    and.push({ assignments: { some: { userId: assignedUserId, active: true } } });
-  }
-  if (sourceManager) and.push({ sourceManagerName: { contains: sourceManager, mode: "insensitive" } });
-  if (sourcePartner) and.push({ sourcePartnerName: { contains: sourcePartner, mode: "insensitive" } });
-  if (missingParam === "true") and.push({ missingFromLatestImport: true });
-  if (missingParam === "false") and.push({ missingFromLatestImport: false });
-  if (archivedParam === "true") and.push({ archived: true });
-  if (archivedParam === "false") and.push({ archived: false });
-  if (xpmSubState === "ifza_check" || xpmSubState === "job_on_hold") and.push(xpmSubStateWhere(xpmSubState));
-
-  const where: Prisma.JobWhereInput = { AND: and };
+  const where = buildJobReportWhere(filterParams, user, { scope: "visible" });
 
   const showAssignmentAge = (await getSystemSetting("showAssignmentAge")) === "true";
 
@@ -131,17 +91,7 @@ export async function JobListPage({
           orderBy: { assignedAt: "desc" },
         },
       },
-      orderBy: (() => {
-        const dir = sortDir === "desc" ? "desc" : "asc";
-        switch (sortBy) {
-          case "jobNo":       return [{ jobIdFromExcel: dir }] as Prisma.JobOrderByWithRelationInput[];
-          case "client":     return [{ client: { displayName: dir } }, { jobIdFromExcel: "asc" }] as Prisma.JobOrderByWithRelationInput[];
-          case "jobName":    return [{ jobName: dir }, { jobIdFromExcel: "asc" }] as Prisma.JobOrderByWithRelationInput[];
-          case "department": return [{ finalDepartment: { code: dir } }, { jobIdFromExcel: "asc" }] as Prisma.JobOrderByWithRelationInput[];
-          case "state":      return [{ jobStateNumber: dir }, { jobIdFromExcel: "asc" }] as Prisma.JobOrderByWithRelationInput[];
-          default:           return [{ missingFromLatestImport: "desc" }, { jobIdFromExcel: "asc" }] as Prisma.JobOrderByWithRelationInput[];
-        }
-      })(),
+      orderBy: buildJobReportOrderBy(filterParams),
       skip: (page - 1) * pageSize,
       take: pageSize,
     }),
@@ -191,6 +141,11 @@ export async function JobListPage({
     userWorkload[row.userId][deptCode] = (userWorkload[row.userId][deptCode] ?? 0) + 1;
   }
 
+  const exportParams = new URLSearchParams(filterParams);
+  exportParams.delete("page");
+  exportParams.set("scope", "visible");
+  const exportHref = `/api/reports/jobs/export${exportParams.toString() ? `?${exportParams.toString()}` : ""}`;
+
   return (
     <>
       <PageHeader description={effectiveDescription} title={effectiveTitle} />
@@ -211,6 +166,16 @@ export async function JobListPage({
         params={params}
         users={users}
       />
+      <div className="mb-4 flex flex-col gap-3 rounded-lg border bg-muted/30 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
+        <span className="text-muted-foreground">
+          Showing <span className="font-medium text-foreground">{jobs.length}</span> of{" "}
+          <span className="font-medium text-foreground">{total}</span> matching jobs
+        </span>
+        <Link className={cn(buttonVariants({ variant: "outline" }), "self-start")} href={exportHref}>
+          <Download className="h-4 w-4" />
+          Export Excel
+        </Link>
+      </div>
       {jobs.length === 0 ? (
         <EmptyState
           description="Try adjusting the filters or uploading the latest source file."
