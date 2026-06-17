@@ -10,7 +10,8 @@
     "lint": "next lint",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
-    "prisma:seed": "prisma db seed"
+    "prisma:seed": "prisma db seed",
+    "seed:users": "node scripts/users.js"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.8.0",
