@@ -7,6 +7,7 @@ import { prisma } from "@/lib/db";
 import { requireRole } from "@/lib/rbac";
 import { stageImportBatch } from "@/lib/import/stage";
 import { applyImportBatch } from "@/lib/import/apply";
+import { ImportFileError } from "@/lib/import/parser";
 
 function parseInputDateTime(value: FormDataEntryValue | null) {
   const text = String(value ?? "");
@@ -38,9 +39,19 @@ export async function stageImportAction(formData: FormData) {
   }
 
   const file = formData.get("file");
-  if (!(file instanceof File)) throw new Error("Upload file is required.");
+  if (!(file instanceof File)) {
+    redirect("/imports/upload?error=upload-file&message=Upload%20file%20is%20required.");
+  }
 
-  const batch = await stageImportBatch(file, user.id, xpmDownloadedAt.date);
+  let batch: Awaited<ReturnType<typeof stageImportBatch>>;
+  try {
+    batch = await stageImportBatch(file, user.id, xpmDownloadedAt.date);
+  } catch (error) {
+    if (error instanceof ImportFileError || (error instanceof Error && error.name === "ImportFileError")) {
+      redirect(`/imports/upload?error=upload-file&message=${encodeURIComponent(error.message.slice(0, 500))}`);
+    }
+    throw error;
+  }
   const suffix = overrideXpmDate ? "?overrideXpmDate=true" : "";
   redirect(`/imports/${batch.id}/preview${suffix}`);
 }

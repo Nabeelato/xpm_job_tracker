@@ -10,6 +10,7 @@ const uploadErrors: Record<string, string> = {
   "missing-download-date": "Enter the date and time the XPM file was downloaded.",
   "download-date-future": "The XPM download time cannot be in the future.",
   "download-date-not-newer": "XPM download date/time must be after the last imported file's XPM date/time.",
+  "upload-file": "The import file could not be staged.",
 };
 
 function pad(n: number) {
@@ -27,11 +28,13 @@ function nowInputDateTime() {
 export function ImportUploadForm({
   action,
   errorCode,
+  errorMessage: customErrorMessage,
   lastAppliedXpmAt,
   allowOverride = false,
 }: {
   action: (formData: FormData) => void;
   errorCode?: string;
+  errorMessage?: string;
   lastAppliedXpmAt?: string | null;
   allowOverride?: boolean;
 }) {
@@ -45,7 +48,7 @@ export function ImportUploadForm({
     return toLocalInputDateTime(new Date(d.getTime() + 60_000));
   }, [lastAppliedXpmAt]);
   const dateInputRef = useRef<HTMLInputElement>(null);
-  const errorMessage = errorCode ? uploadErrors[errorCode] : "";
+  const errorMessage = customErrorMessage || (errorCode ? uploadErrors[errorCode] : "");
 
   useEffect(() => {
     if (errorMessage) window.alert(errorMessage);

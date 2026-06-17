@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import bcrypt from "bcryptjs";
-import { UserRole } from "@prisma/client";
+import { ChangeSource, InternalStatus, UserRole } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { requireRole } from "@/lib/rbac";
 
@@ -85,19 +85,16 @@ export async function deleteUserAction(_prev: ActionResult | null, formData: For
   if (!id) return { ok: false, error: "Missing user id." };
   if (id === admin.id) return { ok: false, error: "You cannot delete your own account." };
 
-  const [assignments, assignedBy, comments, changeLogs, batches] = await prisma.$transaction([
-    prisma.jobAssignment.count({ where: { userId: id } }),
-    prisma.jobAssignment.count({ where: { assignedById: id } }),
+  const user = await prisma.user.findUnique({ where: { id }, select: { id: true } });
+  if (!user) return { ok: false, error: "User not found." };
+
+  const [comments, batches] = await prisma.$transaction([
     prisma.jobComment.count({ where: { userId: id } }),
-    prisma.jobChangeLog.count({ where: { changedById: id } }),
     prisma.importBatch.count({ where: { uploadedById: id } }),
   ]);
 
   const refs: string[] = [];
-  if (assignments > 0) refs.push(`${assignments} job assignment${assignments === 1 ? "" : "s"}`);
-  if (assignedBy > 0) refs.push(`${assignedBy} assignment${assignedBy === 1 ? "" : "s"} made by user`);
   if (comments > 0) refs.push(`${comments} comment${comments === 1 ? "" : "s"}`);
-  if (changeLogs > 0) refs.push(`${changeLogs} change log${changeLogs === 1 ? "" : "s"}`);
   if (batches > 0) refs.push(`${batches} import batch${batches === 1 ? "" : "es"}`);
 
   if (refs.length > 0) {
@@ -107,14 +104,70 @@ export async function deleteUserAction(_prev: ActionResult | null, formData: For
     };
   }
 
+  let unassignedJobs = 0;
   try {
-    await prisma.user.delete({ where: { id } });
+    await prisma.$transaction(async (tx) => {
+      const activeAssignments = await tx.jobAssignment.findMany({
+        where: { userId: id, active: true },
+        select: { jobId: true },
+      });
+      const affectedJobIds = Array.from(new Set(activeAssignments.map((assignment) => assignment.jobId)));
+
+      await tx.jobAssignment.deleteMany({ where: { userId: id } });
+      await tx.jobAssignment.updateMany({
+        where: { assignedById: id },
+        data: { assignedById: null },
+      });
+      await tx.jobChangeLog.updateMany({
+        where: { changedById: id },
+        data: { changedById: null },
+      });
+      await tx.notification.updateMany({
+        where: { actorId: id },
+        data: { actorId: null },
+      });
+
+      if (affectedJobIds.length > 0) {
+        const jobsWithoutAssignments = await tx.job.findMany({
+          where: {
+            id: { in: affectedJobIds },
+            archived: false,
+            internalStatus: { notIn: [InternalStatus.UNASSIGNED, InternalStatus.ARCHIVED] },
+            assignments: { none: { active: true } },
+          },
+          select: { id: true, internalStatus: true },
+        });
+
+        if (jobsWithoutAssignments.length > 0) {
+          const jobIds = jobsWithoutAssignments.map((job) => job.id);
+          await tx.job.updateMany({
+            where: { id: { in: jobIds } },
+            data: { internalStatus: InternalStatus.UNASSIGNED },
+          });
+          await tx.jobChangeLog.createMany({
+            data: jobsWithoutAssignments.map((job) => ({
+              jobId: job.id,
+              changedById: admin.id,
+              changeSource: ChangeSource.USER,
+              fieldName: "internal_status",
+              oldValue: job.internalStatus,
+              newValue: InternalStatus.UNASSIGNED,
+            })),
+          });
+          unassignedJobs = jobsWithoutAssignments.length;
+        }
+      }
+
+      await tx.user.delete({ where: { id } });
+    });
   } catch {
     return { ok: false, error: "Unable to delete this user. They may have related records." };
   }
 
   revalidatePath("/users");
-  return { ok: true };
+  revalidatePath("/jobs");
+  const suffix = unassignedJobs ? ` ${unassignedJobs} job${unassignedJobs === 1 ? "" : "s"} became unassigned.` : "";
+  return { ok: true, message: `User deleted.${suffix}` };
 }
 
 export async function transferAssignmentsAction(

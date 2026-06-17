@@ -61,7 +61,11 @@ export function UserRow({
   const eligibleTargets = transferTargets.filter((t) => t.id !== user.id);
 
   function handleDeleteSubmit(e: React.FormEvent<HTMLFormElement>) {
-    if (!confirm(`Permanently delete ${user.name}? This cannot be undone.`)) {
+    const assignmentNote =
+      user.activeAssignmentCount > 0
+        ? ` ${user.activeAssignmentCount} active job assignment${user.activeAssignmentCount === 1 ? "" : "s"} will be removed.`
+        : "";
+    if (!confirm(`Permanently delete ${user.name}?${assignmentNote} This cannot be undone.`)) {
       e.preventDefault();
     }
   }
@@ -163,6 +167,9 @@ export function UserRow({
         </div>
         {deleteState && !deleteState.ok && (
           <p className="mt-1 text-sm text-destructive">{deleteState.error}</p>
+        )}
+        {deleteState?.ok && deleteState.message && (
+          <p className="mt-1 text-sm text-emerald-700">{deleteState.message}</p>
         )}
 
         {transferOpen && (

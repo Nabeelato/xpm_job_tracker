@@ -10,10 +10,10 @@ import { stageImportAction } from "../actions";
 export default async function UploadImportPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; message?: string }>;
 }) {
   await requireRole(["ADMIN"]);
-  const { error } = await searchParams;
+  const { error, message } = await searchParams;
 
   const lastApplied = await prisma.importBatch.findFirst({
     where: { status: ImportStatus.APPLIED, xpmDownloadedAt: { not: null } },
@@ -45,6 +45,7 @@ export default async function UploadImportPage({
             allowOverride
             action={stageImportAction}
             errorCode={error}
+            errorMessage={message}
             lastAppliedXpmAt={lastApplied?.xpmDownloadedAt?.toISOString() ?? null}
           />
         </CardContent>

@@ -29,6 +29,13 @@ export type ParsedUpload = {
   missingHeaders: string[];
 };
 
+export class ImportFileError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ImportFileError";
+  }
+}
+
 const uploadSchema = z.object({
   name: z.string().min(1),
   size: z.number().max(maxUploadSizeBytes),
@@ -145,21 +152,26 @@ async function parseXlsx(buffer: Buffer) {
 export async function parseImportFile(file: File): Promise<ParsedUpload> {
   const parsedFile = uploadSchema.safeParse({ name: file.name, size: file.size });
   if (!parsedFile.success) {
-    throw new Error(`Upload must be a CSV/XLSX file no larger than ${Math.floor(maxUploadSizeBytes / 1024 / 1024)}MB.`);
+    throw new ImportFileError(`Upload must be a CSV/XLSX file no larger than ${Math.floor(maxUploadSizeBytes / 1024 / 1024)}MB.`);
   }
 
   const extension = file.name.split(".").pop()?.toLowerCase();
   if (!extension || !["csv", "xlsx"].includes(extension)) {
-    throw new Error("Only .csv and .xlsx uploads are accepted.");
+    throw new ImportFileError("Only .csv and .xlsx uploads are accepted.");
   }
 
   const buffer = Buffer.from(await file.arrayBuffer());
   const fileHash = createHash("sha256").update(buffer).digest("hex");
-  const parsed = extension === "csv" ? await parseCsv(buffer) : await parseXlsx(buffer);
+  let parsed: Awaited<ReturnType<typeof parseCsv>>;
+  try {
+    parsed = extension === "csv" ? await parseCsv(buffer) : await parseXlsx(buffer);
+  } catch {
+    throw new ImportFileError("Could not read the uploaded file. Check that it is a valid CSV/XLSX export and try again.");
+  }
   const missingHeaders = requiredUploadHeaders.filter((header) => !parsed.headers.some((candidate) => normalizeHeader(candidate) === normalizeHeader(header)));
 
   if (missingHeaders.length > 0) {
-    throw new Error(`Missing required column(s): ${missingHeaders.join(", ")}`);
+    throw new ImportFileError(`Missing required column(s): ${missingHeaders.join(", ")}`);
   }
 
   return {
