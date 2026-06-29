@@ -183,42 +183,48 @@ export async function stageImportBatch(file: File, uploadedById: string, xpmDown
     matchedJobId: job.id,
   }));
 
-  return prisma.$transaction(async (tx) => {
-    const batch = await tx.importBatch.create({
-      data: {
-        fileName: parsed.fileName,
-        fileHash: parsed.fileHash,
-        uploadedById,
-        xpmDownloadedAt,
-        totalRows: parsed.rows.length,
-        newClientsCount: newClientKeys.size,
-        matchedClientsCount: matchedClientKeys.size,
-        newJobsCount,
-        updatedJobsCount,
-        unchangedJobsCount,
-        missingJobsCount,
-        vatJobsCount: departmentCounts.VAT,
-        softwareBkJobsCount: departmentCounts.SOFTWARE_BK,
-        bkJobsCount: departmentCounts.BK,
-        afsJobsCount: departmentCounts.AFS,
-        unclassifiedJobsCount: departmentCounts.UNCLASSIFIED,
-        duplicateRowsCount,
-        errorRowsCount,
-        stateUpdatedCount,
-        stateUnchangedCount,
-        movedOutOfMainCount,
-        completedStateCount,
-        cancelledStateCount,
-      },
-    });
-
-    const rowsToCreate = [...importRows, ...missingImportRows];
-    if (rowsToCreate.length > 0) {
-      await tx.importRow.createMany({
-        data: rowsToCreate.map((row) => ({ ...row, importBatchId: batch.id })),
+  return prisma.$transaction(
+    async (tx) => {
+      const batch = await tx.importBatch.create({
+        data: {
+          fileName: parsed.fileName,
+          fileHash: parsed.fileHash,
+          uploadedById,
+          xpmDownloadedAt,
+          totalRows: parsed.rows.length,
+          newClientsCount: newClientKeys.size,
+          matchedClientsCount: matchedClientKeys.size,
+          newJobsCount,
+          updatedJobsCount,
+          unchangedJobsCount,
+          missingJobsCount,
+          vatJobsCount: departmentCounts.VAT,
+          softwareBkJobsCount: departmentCounts.SOFTWARE_BK,
+          bkJobsCount: departmentCounts.BK,
+          afsJobsCount: departmentCounts.AFS,
+          unclassifiedJobsCount: departmentCounts.UNCLASSIFIED,
+          duplicateRowsCount,
+          errorRowsCount,
+          stateUpdatedCount,
+          stateUnchangedCount,
+          movedOutOfMainCount,
+          completedStateCount,
+          cancelledStateCount,
+        },
       });
-    }
 
-    return batch;
-  });
+      const rowsToCreate = [...importRows, ...missingImportRows];
+      if (rowsToCreate.length > 0) {
+        await tx.importRow.createMany({
+          data: rowsToCreate.map((row) => ({ ...row, importBatchId: batch.id })),
+        });
+      }
+
+      return batch;
+    },
+    {
+      timeout: 300000, // 5-minute timeout for large staged imports
+      maxWait: 300000,
+    },
+  );
 }

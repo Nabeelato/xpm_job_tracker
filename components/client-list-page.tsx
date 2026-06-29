@@ -12,7 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { bookkeepingByLabels, bookkeepingSoftwareLabels, clientCategoryLabels } from "@/lib/constants";
 import { getClientSummaries, type ClientFilter } from "@/lib/optimized-queries";
 import { requireUser } from "@/lib/rbac";
-import { cn, searchParam, toInt } from "@/lib/utils";
+import { cn, parsePageSize, searchParam, toInt, withPageSizeParam } from "@/lib/utils";
 
 export async function ClientListPage({
   title,
@@ -35,8 +35,9 @@ export async function ClientListPage({
     if (typeof value === "string" && value) params.set(key, value);
   }
 
-  const page = toInt(searchParam(rawParams, "page"), 1);
-  const pageSize = 25;
+  const { pageSize, pageSizeOption } = parsePageSize(searchParam(rawParams, "pageSize"));
+  const page = pageSizeOption === "all" ? 1 : toInt(searchParam(rawParams, "page"), 1);
+  const pageParams = withPageSizeParam(params, pageSizeOption);
   const query = searchParam(rawParams, "q");
   const filter = presetFilter ?? searchParam(rawParams, "filter");
   const bookkeepingSoftware = searchParam(rawParams, "bookkeepingSoftware");
@@ -51,7 +52,7 @@ export async function ClientListPage({
     pageSize,
   });
 
-  const exportParams = new URLSearchParams(params);
+  const exportParams = new URLSearchParams(pageParams);
   if (presetFilter) exportParams.set("filter", presetFilter);
   exportParams.delete("page");
   exportParams.set("scope", "visible");
@@ -60,7 +61,7 @@ export async function ClientListPage({
   return (
     <>
       <PageHeader title={title} description={description} />
-      <ClientFilters params={params} />
+      <ClientFilters params={pageParams} />
       <div className="mb-4 flex flex-col gap-3 rounded-lg border bg-muted/30 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
         <span className="text-muted-foreground">
           Showing <span className="font-medium text-foreground">{summaries.length}</span> of{" "}
@@ -148,7 +149,14 @@ export async function ClientListPage({
           </Table>
         </div>
       )}
-      <Pagination basePath={basePath} page={page} pageSize={pageSize} params={params} total={total} />
+      <Pagination
+        basePath={basePath}
+        page={page}
+        pageSize={pageSize}
+        pageSizeOption={pageSizeOption}
+        params={pageParams}
+        total={total}
+      />
     </>
   );
 }

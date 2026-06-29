@@ -27,6 +27,13 @@ function assignmentNames(
     .join(", ");
 }
 
+function clientCategoryFilterLabel(value: string | null | undefined) {
+  if (value === "SOFTWARE" || value === "category_software") return clientCategoryLabels.SOFTWARE;
+  if (value === "MANUAL" || value === "category_manual") return clientCategoryLabels.MANUAL;
+  if (value === "uncategorized" || value === "category_uncategorized") return "Uncategorized";
+  return value;
+}
+
 export async function GET(req: NextRequest) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -85,7 +92,8 @@ export async function GET(req: NextRequest) {
       { label: "Scope", value: scope === "visible" ? "Current screen visibility" : "Hierarchy report scope" },
       { label: "Search", value: params.get("q") },
       { label: "Department", value: params.get("department") },
-      { label: "Job State", value: params.get("jobStateNumber") ?? params.get("stateSet") ?? params.get("stateGroup") },
+      { label: "Client Category", value: clientCategoryFilterLabel(params.get("clientCategory")) },
+      { label: "Job State", value: params.get("stateFilter") ?? params.get("jobStateNumber") ?? params.get("stateSet") ?? params.get("stateGroup") },
       { label: "Assigned User", value: params.get("assignedUserId") },
       { label: "Missing", value: params.get("missing") },
       { label: "Archived", value: params.get("archived") ?? "false" },

@@ -2,8 +2,7 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { Download } from "lucide-react";
 import { EmptyState } from "@/components/empty-state";
-import { JobFilters } from "@/components/job-filters";
-import { JobFilterTabs, type JobTabsConfig } from "@/components/job-filter-tabs";
+import { JobFilters, type JobTabsConfig } from "@/components/job-filters";
 import { JobsTableClient, type JobRow } from "@/components/jobs-table-client";
 import { PageHeader } from "@/components/page-header";
 import { Pagination } from "@/components/pagination";
@@ -13,10 +12,11 @@ import type { JobStateGroup } from "@/lib/job-state";
 import { buildJobReportOrderBy, buildJobReportWhere } from "@/lib/reports";
 import { getSystemSetting } from "@/lib/settings";
 import { requireUser } from "@/lib/rbac";
-import { cn, searchParam, toInt } from "@/lib/utils";
+import { cn, parsePageSize, searchParam, toInt, withPageSizeParam } from "@/lib/utils";
 
 type Preset = {
   department?: string;
+  stateSet?: "main" | "workflow" | "other";
   missing?: boolean;
   myJobs?: boolean;
   stateGroup?: JobStateGroup;
@@ -29,6 +29,7 @@ function paramsWithPreset(params: URLSearchParams, preset: Preset) {
   if (preset.department) next.set("department", preset.department);
   if (preset.missing !== undefined) next.set("missing", String(preset.missing));
   if (preset.myJobs) next.set("myJobs", "true");
+  if (preset.stateSet) next.set("stateSet", preset.stateSet);
   if (preset.stateGroup) next.set("stateGroup", preset.stateGroup);
   if (preset.stateNumbers?.length) next.set("stateNumbers", preset.stateNumbers.join(","));
   return next;
@@ -58,9 +59,10 @@ export async function JobListPage({
   const effectiveTitle = title ?? "";
   const effectiveDescription = description;
 
-  const page = toInt(searchParam(rawParams, "page"), 1);
-  const pageSize = 25;
-  const filterParams = paramsWithPreset(params, effectivePreset);
+  const { pageSize, pageSizeOption } = parsePageSize(searchParam(rawParams, "pageSize"));
+  const page = pageSizeOption === "all" ? 1 : toInt(searchParam(rawParams, "page"), 1);
+  const pageParams = withPageSizeParam(params, pageSizeOption);
+  const filterParams = paramsWithPreset(pageParams, effectivePreset);
   const sortBy = searchParam(rawParams, "sortBy");
   const sortDir = (searchParam(rawParams, "sortDir") ?? "asc") as "asc" | "desc";
   const where = buildJobReportWhere(filterParams, user, { scope: "visible" });
@@ -149,21 +151,14 @@ export async function JobListPage({
   return (
     <>
       <PageHeader description={effectiveDescription} title={effectiveTitle} />
-      <JobFilterTabs
+      <JobFilters
         basePath={basePath}
         config={effectivePreset.tabs}
         departments={departments}
-        params={params}
-        users={users}
-      />
-      <JobFilters
-        departments={departments}
-        hidden={{
-          assignedUserId: effectivePreset.tabs?.assignees,
-          department: effectivePreset.tabs?.departments,
-          jobStateNumber: Boolean(effectivePreset.tabs?.states || effectivePreset.tabs?.stateSets),
-        }}
-        params={params}
+        hasPresetState={Boolean(effectivePreset.stateGroup || effectivePreset.stateSet || effectivePreset.stateNumbers?.length)}
+        lockedMissing={effectivePreset.missing !== undefined}
+        params={filterParams}
+        activeParams={pageParams}
         users={users}
       />
       <div className="mb-4 flex flex-col gap-3 rounded-lg border bg-muted/30 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
@@ -224,7 +219,14 @@ export async function JobListPage({
         />
         </Suspense>
       )}
-      <Pagination basePath={basePath} page={page} pageSize={pageSize} params={params} total={total} />
+      <Pagination
+        basePath={basePath}
+        page={page}
+        pageSize={pageSize}
+        pageSizeOption={pageSizeOption}
+        params={pageParams}
+        total={total}
+      />
     </>
   );
 }

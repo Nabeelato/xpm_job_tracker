@@ -43,3 +43,29 @@ export function toInt(value: string | undefined, fallback: number) {
   const parsed = Number.parseInt(value ?? "", 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
+
+export type PageSizeOption = "25" | "50" | "100" | "all";
+
+export const defaultPageSize = 25;
+export const maxAllPageSize = 500;
+
+export function parsePageSize(value: string | undefined): {
+  pageSize: number;
+  pageSizeOption: PageSizeOption;
+} {
+  if (value === "50" || value === "100") {
+    return { pageSize: Number(value), pageSizeOption: value };
+  }
+  if (value === "all") {
+    return { pageSize: maxAllPageSize, pageSizeOption: "all" };
+  }
+  return { pageSize: defaultPageSize, pageSizeOption: "25" };
+}
+
+export function withPageSizeParam(params: URLSearchParams, pageSizeOption: PageSizeOption) {
+  const next = new URLSearchParams(params);
+  if (pageSizeOption === "25") next.delete("pageSize");
+  else next.set("pageSize", pageSizeOption);
+  if (pageSizeOption === "all") next.delete("page");
+  return next;
+}

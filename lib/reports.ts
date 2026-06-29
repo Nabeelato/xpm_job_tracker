@@ -50,6 +50,26 @@ function isXpmSubState(value: string | undefined): value is XpmSubState {
   return value === "ifza_check" || value === "job_on_hold";
 }
 
+function clientCategoryFilterWhere(value: string | undefined): Prisma.JobWhereInput | null | undefined {
+  if (!value) return undefined;
+  if (value === "SOFTWARE" || value === "category_software") return { client: { category: "SOFTWARE" } };
+  if (value === "MANUAL" || value === "category_manual") return { client: { category: "MANUAL" } };
+  if (value === "uncategorized" || value === "category_uncategorized") return { client: { category: null } };
+  return null;
+}
+
+function stateFilterWhere(value: string | undefined): Prisma.JobWhereInput | null | undefined {
+  if (!value) return undefined;
+  if (value === "all") return null;
+  if (value === "main") return { jobStateNumber: { in: [2, 3, 4, 5, 6] } };
+  if (value === "workflow") return { jobStateNumber: { in: [3, 4, 5, 6] } };
+  if (value === "other") return stateGroupWhere("OTHER");
+
+  const stateNumber = toPositiveInt(value);
+  if (stateNumber > 0) return { jobStateNumber: stateNumber };
+  return null;
+}
+
 export function reportScopeWhere(user: AppSessionUser): Prisma.JobWhereInput {
   if (user.role === "ADMIN" || user.departmentCode === "QC") return {};
 
@@ -114,6 +134,8 @@ export function buildJobReportWhere(
   const assignedUserId = param(params, "assignedUserId");
   const sourceManager = param(params, "sourceManager")?.trim();
   const sourcePartner = param(params, "sourcePartner")?.trim();
+  const clientCategory = param(params, "clientCategory");
+  const stateFilter = param(params, "stateFilter");
   const stateSet = param(params, "stateSet");
   const stateGroup = param(params, "stateGroup");
   const stateNumbers = csvNumbers(param(params, "stateNumbers"));
@@ -137,18 +159,26 @@ export function buildJobReportWhere(
 
   if (department) and.push({ finalDepartment: { code: department } });
 
-  if (jobStateNumber > 0 && (!stateNumbers.length || stateNumbers.includes(jobStateNumber))) {
-    and.push({ jobStateNumber });
-  } else if (stateNumbers.length) {
-    and.push({ jobStateNumber: { in: stateNumbers } });
-  } else if (isStateGroup(stateGroup)) {
-    and.push(stateGroupWhere(stateGroup));
-  } else if (stateSet === "main") {
-    and.push({ jobStateNumber: { in: [2, 3, 4, 5, 6] } });
-  } else if (stateSet === "workflow") {
-    and.push({ jobStateNumber: { in: [3, 4, 5, 6] } });
-  } else if (stateSet === "other") {
-    and.push(stateGroupWhere("OTHER"));
+  const clientCategoryClause = clientCategoryFilterWhere(clientCategory);
+  if (clientCategoryClause) and.push(clientCategoryClause);
+
+  const stateFilterClause = stateFilterWhere(stateFilter);
+  if (stateFilterClause) {
+    and.push(stateFilterClause);
+  } else if (stateFilterClause === undefined) {
+    if (jobStateNumber > 0 && (!stateNumbers.length || stateNumbers.includes(jobStateNumber))) {
+      and.push({ jobStateNumber });
+    } else if (stateNumbers.length) {
+      and.push({ jobStateNumber: { in: stateNumbers } });
+    } else if (isStateGroup(stateGroup)) {
+      and.push(stateGroupWhere(stateGroup));
+    } else if (stateSet === "main") {
+      and.push({ jobStateNumber: { in: [2, 3, 4, 5, 6] } });
+    } else if (stateSet === "workflow") {
+      and.push({ jobStateNumber: { in: [3, 4, 5, 6] } });
+    } else if (stateSet === "other") {
+      and.push(stateGroupWhere("OTHER"));
+    }
   }
 
   if (priority) and.push({ priority: { contains: priority, mode: "insensitive" } });

@@ -10,6 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import {
   bookkeepingByLabels,
   bookkeepingSoftwareLabels,
+  clientCategories,
   clientCategoryLabels,
   jobStateOptions,
   userRoles,
@@ -130,7 +131,7 @@ export default async function ReportsPage() {
       <div className="mb-5 grid gap-4 xl:grid-cols-2">
         <ReportCard
           action="/api/reports/jobs/export"
-          description="Detailed job list with client, state, department, assignment, source manager, and bookkeeping columns."
+          description="Detailed job list with client, category, state, department, assignment, source manager, and bookkeeping columns."
           title="Jobs Detail Report"
         >
           <Field label="Search">
@@ -144,6 +145,17 @@ export default async function ReportsPage() {
                   {department.label}
                 </option>
               ))}
+            </Select>
+          </Field>
+          <Field label="Client Category">
+            <Select name="clientCategory">
+              <option value="">Any category</option>
+              {clientCategories.map((category) => (
+                <option key={category} value={category}>
+                  {clientCategoryLabels[category]}
+                </option>
+              ))}
+              <option value="uncategorized">Uncategorized</option>
             </Select>
           </Field>
           <Field label="Job State">

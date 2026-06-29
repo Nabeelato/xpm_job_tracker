@@ -1,7 +1,5 @@
 import { JobListPage } from "@/components/job-list-page";
 
-const workflowStates = [3, 4, 5, 6];
-
 export default function MyJobsPage({
   searchParams,
 }: {
@@ -10,8 +8,8 @@ export default function MyJobsPage({
   return (
     <JobListPage
       basePath="/jobs/my"
-      description="Jobs assigned to you in states 03 to 06."
-      preset={{ myJobs: true, stateNumbers: workflowStates, tabs: { departments: true, states: workflowStates } }}
+      description="Jobs assigned to you, with workflow states 03 to 06 as the default filter."
+      preset={{ myJobs: true, stateSet: "workflow", tabs: { assignees: true, departments: true, stateSets: true, states: "all" } }}
       searchParams={searchParams}
       title="My Jobs"
     />
