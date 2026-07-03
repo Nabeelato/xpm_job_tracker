@@ -34,6 +34,25 @@ function clientCategoryFilterLabel(value: string | null | undefined) {
   return value;
 }
 
+function assignmentFilterLabel(value: string) {
+  if (value === "unassigned") return "Unassigned";
+  return value;
+}
+
+function joinParamValues(params: URLSearchParams, key: string, mapValue?: (value: string) => string) {
+  const values = Array.from(
+    new Set(
+      params
+        .getAll(key)
+        .flatMap((value) => value.split(","))
+        .map((value) => value.trim())
+        .filter(Boolean),
+    ),
+  );
+  if (!values.length) return null;
+  return values.map((value) => (mapValue ? mapValue(value) : value)).join(", ");
+}
+
 export async function GET(req: NextRequest) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -91,10 +110,24 @@ export async function GET(req: NextRequest) {
     filters: [
       { label: "Scope", value: scope === "visible" ? "Current screen visibility" : "Hierarchy report scope" },
       { label: "Search", value: params.get("q") },
-      { label: "Department", value: params.get("department") },
-      { label: "Client Category", value: clientCategoryFilterLabel(params.get("clientCategory")) },
-      { label: "Job State", value: params.get("stateFilter") ?? params.get("jobStateNumber") ?? params.get("stateSet") ?? params.get("stateGroup") },
-      { label: "Assigned User", value: params.get("assignedUserId") },
+      { label: "Department", value: joinParamValues(params, "department") },
+      { label: "Staff", value: joinParamValues(params, "staffUserId", assignmentFilterLabel) },
+      { label: "Manager", value: joinParamValues(params, "managerUserId", assignmentFilterLabel) },
+      { label: "Supervisor", value: joinParamValues(params, "supervisorUserId", assignmentFilterLabel) },
+      { label: "Client Category", value: joinParamValues(params, "clientCategory", (value) => clientCategoryFilterLabel(value) ?? value) },
+      {
+        label: "Job State",
+        value:
+          joinParamValues(params, "stateFilter", (value) => {
+            if (value === "main") return "Main 02-06";
+            if (value === "workflow") return "Workflow 03-06";
+            if (value === "other") return "Other states";
+            if (value === "completed") return "Completed";
+            if (value === "cancelled") return "Cancelled";
+            return value;
+          }) ?? joinParamValues(params, "jobStateNumber") ?? joinParamValues(params, "stateNumbers") ?? params.get("stateSet") ?? params.get("stateGroup"),
+      },
+      { label: "Assigned User", value: joinParamValues(params, "assignedUserId", (value) => (value === "unassigned" ? "Unassigned" : value)) },
       { label: "Missing", value: params.get("missing") },
       { label: "Archived", value: params.get("archived") ?? "false" },
       { label: "Sort", value: params.get("sortBy") ? `${params.get("sortBy")} ${params.get("sortDir") ?? "asc"}` : null },

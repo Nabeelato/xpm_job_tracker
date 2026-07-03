@@ -36,7 +36,7 @@ export async function ClientListPage({
   }
 
   const { pageSize, pageSizeOption } = parsePageSize(searchParam(rawParams, "pageSize"));
-  const page = pageSizeOption === "all" ? 1 : toInt(searchParam(rawParams, "page"), 1);
+  const page = toInt(searchParam(rawParams, "page"), 1);
   const pageParams = withPageSizeParam(params, pageSizeOption);
   const query = searchParam(rawParams, "q");
   const filter = presetFilter ?? searchParam(rawParams, "filter");

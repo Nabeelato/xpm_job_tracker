@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { JobComments } from "@/components/job-comments";
-import { assignmentRoles, bookkeepingByLabels, bookkeepingSoftwareLabels, internalStatuses } from "@/lib/constants";
+import { assignmentRoles, bookkeepingByLabels, bookkeepingSoftwareLabels, internalStatuses, userRoles } from "@/lib/constants";
 import { prisma } from "@/lib/db";
 import { assertCanViewJob, canArchiveJobs, canAssignJobs, requireUser, visibleJobsWhere } from "@/lib/rbac";
 import { formatDateTime, titleCaseEnum } from "@/lib/utils";
@@ -81,7 +81,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
     prisma.user.findMany({
       where:
         user.role === "MANAGER"
-          ? { active: true, departmentId: user.departmentId ?? "__none__", role: { in: ["SUPERVISOR", "STAFF"] } }
+          ? { active: true, departmentId: user.departmentId ?? "__none__", role: { in: userRoles } }
           : { active: true },
       orderBy: { name: "asc" },
       select: { id: true, name: true, role: true },

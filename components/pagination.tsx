@@ -5,7 +5,7 @@ const pageSizeOptions: Array<{ label: string; value: PageSizeOption }> = [
   { label: "25", value: "25" },
   { label: "50", value: "50" },
   { label: "100", value: "100" },
-  { label: "All (max 500)", value: "all" },
+  { label: "All (500/page)", value: "all" },
 ];
 
 function pageSizeHref(basePath: string, params: URLSearchParams, value: PageSizeOption) {
@@ -31,9 +31,8 @@ export function Pagination({
   basePath: string;
   params: URLSearchParams;
 }) {
-  const isAllMode = pageSizeOption === "all";
-  const currentPage = isAllMode ? 1 : page;
-  const lastPage = isAllMode ? 1 : Math.max(1, Math.ceil(total / pageSize));
+  const currentPage = page;
+  const lastPage = Math.max(1, Math.ceil(total / pageSize));
   const previous = new URLSearchParams(params);
   previous.set("page", String(Math.max(1, currentPage - 1)));
   const next = new URLSearchParams(params);
@@ -45,11 +44,6 @@ export function Pagination({
         <span>
           Page {currentPage} of {lastPage} - {total} records
         </span>
-        {isAllMode && total > pageSize ? (
-          <span className="rounded-full bg-muted px-2 py-0.5 text-xs">
-            All is capped at {pageSize} records
-          </span>
-        ) : null}
         <div className="flex flex-wrap items-center gap-1">
           <span className="mr-1">Rows:</span>
           {pageSizeOptions.map((option) => (

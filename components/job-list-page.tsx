@@ -7,12 +7,13 @@ import { JobsTableClient, type JobRow } from "@/components/jobs-table-client";
 import { PageHeader } from "@/components/page-header";
 import { Pagination } from "@/components/pagination";
 import { buttonVariants } from "@/components/ui/button";
+import { managerUserRoles } from "@/lib/constants";
 import { prisma } from "@/lib/db";
 import type { JobStateGroup } from "@/lib/job-state";
 import { buildJobReportOrderBy, buildJobReportWhere } from "@/lib/reports";
 import { getSystemSetting } from "@/lib/settings";
 import { requireUser } from "@/lib/rbac";
-import { cn, parsePageSize, searchParam, toInt, withPageSizeParam } from "@/lib/utils";
+import { cn, parsePageSize, searchParam, toInt, toSearchParams, withPageSizeParam } from "@/lib/utils";
 
 type Preset = {
   department?: string;
@@ -29,7 +30,13 @@ function paramsWithPreset(params: URLSearchParams, preset: Preset) {
   if (preset.department) next.set("department", preset.department);
   if (preset.missing !== undefined) next.set("missing", String(preset.missing));
   if (preset.myJobs) next.set("myJobs", "true");
-  if (preset.stateSet) next.set("stateSet", preset.stateSet);
+  const hasExplicitState =
+    next.has("stateFilter") ||
+    next.has("jobStateNumber") ||
+    next.has("stateGroup") ||
+    next.has("stateNumbers") ||
+    next.has("stateSet");
+  if (preset.stateSet && !hasExplicitState) next.set("stateSet", preset.stateSet);
   if (preset.stateGroup) next.set("stateGroup", preset.stateGroup);
   if (preset.stateNumbers?.length) next.set("stateNumbers", preset.stateNumbers.join(","));
   return next;
@@ -50,17 +57,14 @@ export async function JobListPage({
 }) {
   const user = await requireUser();
   const rawParams = (await searchParams) ?? {};
-  const params = new URLSearchParams();
-  for (const [key, value] of Object.entries(rawParams)) {
-    if (typeof value === "string" && value) params.set(key, value);
-  }
+  const params = toSearchParams(rawParams);
 
   const effectivePreset: Preset = preset;
   const effectiveTitle = title ?? "";
   const effectiveDescription = description;
 
   const { pageSize, pageSizeOption } = parsePageSize(searchParam(rawParams, "pageSize"));
-  const page = pageSizeOption === "all" ? 1 : toInt(searchParam(rawParams, "page"), 1);
+  const page = toInt(searchParam(rawParams, "page"), 1);
   const pageParams = withPageSizeParam(params, pageSizeOption);
   const filterParams = paramsWithPreset(pageParams, effectivePreset);
   const sortBy = searchParam(rawParams, "sortBy");
@@ -123,7 +127,7 @@ export async function JobListPage({
 
   const isAdmin = user.role === "ADMIN";
   const isSupervisor = user.role === "SUPERVISOR";
-  const managerUsers = users.filter((u) => u.role === "MANAGER");
+  const managerUsers = users.filter((u) => managerUserRoles.includes(u.role));
   const supervisorUsers = users.filter((u) => u.role === "SUPERVISOR");
 
   const staffBySupId = new Map<string, { id: string; name: string | null }[]>();

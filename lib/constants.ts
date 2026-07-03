@@ -53,6 +53,9 @@ export const assignmentRoles: AssignmentRole[] = ["MANAGER", "SUPERVISOR", "STAF
 
 export const userRoles: UserRole[] = ["ADMIN", "MANAGER", "SUPERVISOR", "STAFF"];
 
+// Admins remain eligible anywhere the app needs a manager-style assignee.
+export const managerUserRoles: UserRole[] = ["ADMIN", "MANAGER"];
+
 export const clientCategories: ClientCategory[] = ["SOFTWARE", "MANUAL"];
 
 export const clientCategoryLabels: Record<ClientCategory, string> = {

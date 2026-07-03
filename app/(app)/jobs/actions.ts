@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { managerUserRoles } from "@/lib/constants";
 import { getSystemSetting, setSystemSetting } from "@/lib/settings";
 import {
   AssignmentRole,
@@ -39,12 +40,30 @@ async function getVisibleJobOrRedirect(jobId: string) {
 
 function managerCanAssignTo(user: { role: string; departmentId?: string | null }, assignee: { role: string; departmentId: string | null }) {
   if (user.role === "ADMIN") return true;
-  return (
-    user.role === "MANAGER" &&
-    Boolean(user.departmentId) &&
-    assignee.departmentId === user.departmentId &&
-    (assignee.role === "SUPERVISOR" || assignee.role === "STAFF")
-  );
+  return user.role === "MANAGER" && Boolean(user.departmentId) && assignee.departmentId === user.departmentId;
+}
+
+function canAssignRoleTo(
+  user: { role: string; departmentId?: string | null },
+  assignee: { role: string; departmentId: string | null },
+  assignmentRole: AssignmentRole,
+) {
+  if (user.role === "ADMIN") return true;
+  if (!managerCanAssignTo(user, assignee)) return false;
+
+  if (assignmentRole === AssignmentRole.MANAGER) {
+    return managerUserRoles.includes(assignee.role as (typeof managerUserRoles)[number]);
+  }
+
+  if (assignmentRole === AssignmentRole.SUPERVISOR) {
+    return assignee.role === "SUPERVISOR";
+  }
+
+  if (assignmentRole === AssignmentRole.STAFF) {
+    return assignee.role === "STAFF";
+  }
+
+  return false;
 }
 
 function managerCanManageJobAssignment(user: { role: string; id: string }, job: { assignments: Array<{ userId: string }> }) {
@@ -194,7 +213,7 @@ export async function assignJobAction(formData: FormData) {
   ]);
   if (!job || !assignee?.active) return;
   if (!managerCanManageJobAssignment(user, job)) redirect("/jobs/my");
-  if (!managerCanAssignTo(user, assignee)) redirect("/dashboard");
+  if (!canAssignRoleTo(user, assignee, assignmentRole)) redirect("/dashboard");
 
   await prisma.$transaction(async (tx) => {
     const existing = await tx.jobAssignment.findFirst({
@@ -292,7 +311,7 @@ export async function setJobRoleAssignmentAction(formData: FormData) {
     if (user.role === "SUPERVISOR") {
       // Supervisor can only assign their own direct reports
       if (assignee.supervisorId !== user.id) redirect("/dashboard");
-    } else if (!managerCanAssignTo(user, assignee)) {
+    } else if (!canAssignRoleTo(user, assignee, assignmentRole)) {
       redirect("/dashboard");
     }
   }
@@ -402,7 +421,7 @@ export async function deactivateAssignmentAction(formData: FormData) {
   });
   if (!assignment || !assignment.active) return;
   if (!managerCanManageJobAssignment(user, assignment.job)) redirect("/jobs/my");
-  if (!managerCanAssignTo(user, assignment.user)) redirect("/dashboard");
+  if (!canAssignRoleTo(user, assignment.user, assignment.assignmentRole)) redirect("/dashboard");
 
   await prisma.$transaction(async (tx) => {
     await tx.jobAssignment.update({
@@ -466,8 +485,8 @@ export async function bulkAssignJobRolesAction(formData: FormData) {
 
   if (managerChange && !byId.get(managerChange)?.active) return;
   if (supervisorChange && !byId.get(supervisorChange)?.active) return;
-  if (managerChange && !managerCanAssignTo(user, byId.get(managerChange)!)) redirect("/dashboard");
-  if (supervisorChange && !managerCanAssignTo(user, byId.get(supervisorChange)!)) redirect("/dashboard");
+  if (managerChange && !canAssignRoleTo(user, byId.get(managerChange)!, AssignmentRole.MANAGER)) redirect("/dashboard");
+  if (supervisorChange && !canAssignRoleTo(user, byId.get(supervisorChange)!, AssignmentRole.SUPERVISOR)) redirect("/dashboard");
 
   const jobs = await prisma.job.findMany({
     where: { AND: [{ id: { in: jobIds } }, visibleJobsWhere(user)] },

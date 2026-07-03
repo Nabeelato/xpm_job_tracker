@@ -39,6 +39,20 @@ export function searchParam(params: Record<string, string | string[] | undefined
   return Array.isArray(value) ? value[0] : value;
 }
 
+export function toSearchParams(params: Record<string, string | string[] | undefined>) {
+  const next = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        if (item) next.append(key, item);
+      }
+    } else if (typeof value === "string" && value) {
+      next.append(key, value);
+    }
+  }
+  return next;
+}
+
 export function toInt(value: string | undefined, fallback: number) {
   const parsed = Number.parseInt(value ?? "", 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
@@ -66,6 +80,5 @@ export function withPageSizeParam(params: URLSearchParams, pageSizeOption: PageS
   const next = new URLSearchParams(params);
   if (pageSizeOption === "25") next.delete("pageSize");
   else next.set("pageSize", pageSizeOption);
-  if (pageSizeOption === "all") next.delete("page");
   return next;
 }
