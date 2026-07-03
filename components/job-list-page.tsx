@@ -161,8 +161,8 @@ export async function JobListPage({
         departments={departments}
         hasPresetState={Boolean(effectivePreset.stateGroup || effectivePreset.stateSet || effectivePreset.stateNumbers?.length)}
         lockedMissing={effectivePreset.missing !== undefined}
-        params={filterParams}
-        activeParams={pageParams}
+        params={filterParams.toString()}
+        activeParams={pageParams.toString()}
         users={users}
       />
       <div className="mb-4 flex flex-col gap-3 rounded-lg border bg-muted/30 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">

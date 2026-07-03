@@ -395,17 +395,18 @@ export function JobFilters({
   params,
   users,
 }: {
-  activeParams?: URLSearchParams;
+  activeParams?: string;
   basePath: string;
   config?: JobTabsConfig;
   departments: Array<{ id: string; code: string; name: string }>;
   hasPresetState?: boolean;
   lockedMissing?: boolean;
-  params: URLSearchParams;
+  params: string;
   users: Array<{ id: string; name: string | null; role?: string }>;
 }) {
-  const pillParams = activeParams ?? params;
-  const paramsKey = params.toString();
+  const searchParams = useMemo(() => new URLSearchParams(params), [params]);
+  const pillParams = useMemo(() => new URLSearchParams(activeParams ?? params), [activeParams, params]);
+  const paramsKey = params;
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [activeSection, setActiveSection] = useState<FilterSection | null>(null);
 
@@ -508,7 +509,7 @@ export function JobFilters({
   );
 
   const query = getValues(pillParams, "q")[0] ?? "";
-  const stateFilters = selectedStateFilters(params);
+  const stateFilters = selectedStateFilters(searchParams);
   const activeStateFilters = selectedStateFilters(pillParams);
   const activeFilters: Array<{ href: string; label: string }> = [];
   const addFilter = (label: string, keys: string[]) => {
@@ -656,7 +657,7 @@ export function JobFilters({
             name="staffUserId"
             options={staffOptions}
             searchPlaceholder="Search staff"
-            selectedValues={getValues(params, "staffUserId")}
+            selectedValues={getValues(searchParams, "staffUserId")}
           />
         );
       case "manager":
@@ -669,7 +670,7 @@ export function JobFilters({
             name="managerUserId"
             options={managerOptions}
             searchPlaceholder="Search managers"
-            selectedValues={getValues(params, "managerUserId")}
+            selectedValues={getValues(searchParams, "managerUserId")}
           />
         );
       case "supervisor":
@@ -682,7 +683,7 @@ export function JobFilters({
             name="supervisorUserId"
             options={supervisorOptions}
             searchPlaceholder="Search supervisors"
-            selectedValues={getValues(params, "supervisorUserId")}
+            selectedValues={getValues(searchParams, "supervisorUserId")}
           />
         );
       case "department":
@@ -695,7 +696,7 @@ export function JobFilters({
             name="department"
             options={departmentOptions}
             searchPlaceholder="Search departments"
-            selectedValues={getValues(params, "department")}
+            selectedValues={getValues(searchParams, "department")}
           />
         );
       case "state":
@@ -721,16 +722,16 @@ export function JobFilters({
             name="clientCategory"
             options={clientCategoryOptions}
             searchable={false}
-            selectedValues={getValues(params, "clientCategory").map(normalizeClientCategoryValue)}
+            selectedValues={getValues(searchParams, "clientCategory").map(normalizeClientCategoryValue)}
           />
         );
       case "more":
         return (
           <div className="px-4 pb-4">
             <MoreFilters
-              archived={params.get("archived") ?? "false"}
+              archived={searchParams.get("archived") ?? "false"}
               hasLockedMissing={lockedMissing}
-              params={params}
+              params={searchParams}
             />
           </div>
         );
@@ -739,33 +740,33 @@ export function JobFilters({
     }
   }
 
-  const hiddenLegacyAssigneeValues = getValues(params, "assignedUserId");
-  const hiddenMyJobs = params.get("myJobs") ? [params.get("myJobs") ?? ""] : [];
-  const hiddenMissingValue = lockedMissing ? (params.get("missing") ? [params.get("missing") ?? ""] : []) : [];
+  const hiddenLegacyAssigneeValues = getValues(searchParams, "assignedUserId");
+  const hiddenMyJobs = searchParams.get("myJobs") ? [searchParams.get("myJobs") ?? ""] : [];
+  const hiddenMissingValue = lockedMissing ? (searchParams.get("missing") ? [searchParams.get("missing") ?? ""] : []) : [];
 
   return (
     <form action={basePath} className="mb-4 space-y-3">
-      {params.get("pageSize") ? <input name="pageSize" type="hidden" value={params.get("pageSize") ?? ""} /> : null}
+      {searchParams.get("pageSize") ? <input name="pageSize" type="hidden" value={searchParams.get("pageSize") ?? ""} /> : null}
       <HiddenValues name="assignedUserId" values={hiddenLegacyAssigneeValues} />
       <HiddenValues name="myJobs" values={hiddenMyJobs} />
       {showAssignees ? null : (
         <>
-          <HiddenValues name="staffUserId" values={getValues(params, "staffUserId")} />
-          <HiddenValues name="managerUserId" values={getValues(params, "managerUserId")} />
-          <HiddenValues name="supervisorUserId" values={getValues(params, "supervisorUserId")} />
+          <HiddenValues name="staffUserId" values={getValues(searchParams, "staffUserId")} />
+          <HiddenValues name="managerUserId" values={getValues(searchParams, "managerUserId")} />
+          <HiddenValues name="supervisorUserId" values={getValues(searchParams, "supervisorUserId")} />
         </>
       )}
-      {showDepartments ? null : <HiddenValues name="department" values={getValues(params, "department")} />}
+      {showDepartments ? null : <HiddenValues name="department" values={getValues(searchParams, "department")} />}
       {showStates ? null : (
         <>
-          <HiddenValues name="stateFilter" values={getValues(params, "stateFilter")} />
-          <HiddenValues name="stateSet" values={params.get("stateSet") ? [params.get("stateSet") ?? ""] : []} />
-          <HiddenValues name="stateGroup" values={params.get("stateGroup") ? [params.get("stateGroup") ?? ""] : []} />
-          <HiddenValues name="jobStateNumber" values={params.get("jobStateNumber") ? [params.get("jobStateNumber") ?? ""] : []} />
-          <HiddenValues name="stateNumbers" values={getValues(params, "stateNumbers")} />
+          <HiddenValues name="stateFilter" values={getValues(searchParams, "stateFilter")} />
+          <HiddenValues name="stateSet" values={searchParams.get("stateSet") ? [searchParams.get("stateSet") ?? ""] : []} />
+          <HiddenValues name="stateGroup" values={searchParams.get("stateGroup") ? [searchParams.get("stateGroup") ?? ""] : []} />
+          <HiddenValues name="jobStateNumber" values={searchParams.get("jobStateNumber") ? [searchParams.get("jobStateNumber") ?? ""] : []} />
+          <HiddenValues name="stateNumbers" values={getValues(searchParams, "stateNumbers")} />
         </>
       )}
-      <HiddenValues name="missing" values={hiddenMissingValue} />
+      {lockedMissing ? <HiddenValues name="missing" values={hiddenMissingValue} /> : null}
 
       <div className="overflow-hidden rounded-[28px] border border-slate-200/80 bg-gradient-to-b from-white to-slate-50/80 shadow-[0_20px_80px_-48px_rgba(15,23,42,0.38)]">
         <div className="flex flex-col gap-3 px-4 py-4 xl:flex-row xl:items-center">
