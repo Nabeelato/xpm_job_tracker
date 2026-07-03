@@ -3,7 +3,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight, Filter, Search, X } from "lucide-react";
+import { ChevronRight, Filter, Search, X } from "lucide-react";
 import { MultiSelectFilter, type MultiSelectOption } from "@/components/multi-select-filter";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -191,96 +191,45 @@ function HiddenValues({
 }
 
 function SectionButton({
-  active,
+  children,
   count,
   description,
-  onClick,
+  onToggle,
+  open,
   title,
 }: {
-  active?: boolean;
+  children: ReactNode;
   count?: number;
   description: string;
-  onClick: () => void;
+  onToggle: (open: boolean) => void;
+  open: boolean;
   title: string;
 }) {
   return (
-    <button
+    <details
       className={cn(
-        "group flex w-full items-center justify-between rounded-2xl border px-4 py-3 text-left transition",
-        active
-          ? "border-slate-300 bg-slate-50 shadow-sm shadow-slate-900/5"
-          : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50",
+        "group overflow-hidden rounded-2xl border bg-white transition",
+        open ? "border-slate-300 shadow-sm shadow-slate-900/5" : "border-slate-200 hover:border-slate-300",
       )}
-      onClick={onClick}
-      type="button"
+      open={open}
+      onToggle={(event) => onToggle(event.currentTarget.open)}
     >
-      <div className="min-w-0 space-y-0.5">
-        <div className="text-sm font-semibold text-slate-950">{title}</div>
-        <div className="truncate text-xs text-slate-500">{description}</div>
-      </div>
-      <div className="ml-4 flex items-center gap-3">
-        {typeof count === "number" && count > 0 ? (
-          <span className="inline-flex min-w-7 justify-center rounded-full bg-slate-100 px-2 py-1 text-xs font-medium text-slate-600">
-            {count}
-          </span>
-        ) : null}
-        <ChevronRight className="h-4 w-4 text-slate-400 transition group-hover:translate-x-0.5" />
-      </div>
-    </button>
-  );
-}
-
-function SectionHeader({
-  onBack,
-  title,
-  subtitle,
-}: {
-  onBack: () => void;
-  title: string;
-  subtitle: string;
-}) {
-  return (
-    <header className="flex items-center gap-3 border-b border-slate-200/80 px-4 py-4">
-      <button
-        aria-label="Back to filter categories"
-        className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-slate-700 transition hover:bg-slate-200"
-        onClick={onBack}
-        type="button"
-      >
-        <ChevronLeft className="h-5 w-5" />
-      </button>
-      <div className="min-w-0">
-        <div className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Filters</div>
-        <div className="truncate text-lg font-semibold text-slate-950">{title}</div>
-        <div className="truncate text-xs text-slate-500">{subtitle}</div>
-      </div>
-    </header>
-  );
-}
-
-function DrawerFooter({
-  clearHref,
-  onClose,
-  onSubmitLabel = "Apply filters",
-}: {
-  clearHref: string;
-  onClose: () => void;
-  onSubmitLabel?: string;
-}) {
-  return (
-    <footer className="border-t border-slate-200/80 bg-white/95 px-4 py-4">
-      <div className="flex items-center justify-between gap-3">
-        <Link className={cn(buttonVariants({ variant: "outline" }), "flex-1 justify-center")} href={clearHref}>
-          Clear filters
-        </Link>
-        <Button className="flex-1" onClick={onClose} type="button" variant="ghost">
-          Done
-        </Button>
-        <Button className="flex-1" type="submit">
-          {onSubmitLabel}
-        </Button>
-      </div>
-    </footer>
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-4 py-3 [&::-webkit-details-marker]:hidden">
+        <div className="min-w-0 space-y-0.5">
+          <div className="text-sm font-semibold text-slate-950">{title}</div>
+          <div className="truncate text-xs text-slate-500">{description}</div>
+        </div>
+        <div className="ml-4 flex items-center gap-3">
+          {typeof count === "number" && count > 0 ? (
+            <span className="inline-flex min-w-7 justify-center rounded-full bg-slate-100 px-2 py-1 text-xs font-medium text-slate-600">
+              {count}
+            </span>
+          ) : null}
+          <ChevronRight className={cn("h-4 w-4 text-slate-400 transition", open && "rotate-90")} />
+        </div>
+      </summary>
+      <div className="border-t border-slate-200/80 bg-slate-50/40">{children}</div>
+    </details>
   );
 }
 
@@ -408,7 +357,6 @@ export function JobFilters({
   const pillParams = useMemo(() => new URLSearchParams(activeParams ?? params), [activeParams, params]);
   const paramsKey = params;
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [activeSection, setActiveSection] = useState<FilterSection | null>(null);
 
   useEffect(() => {
     if (!drawerOpen) return;
@@ -419,7 +367,6 @@ export function JobFilters({
     const handleEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setDrawerOpen(false);
-        setActiveSection(null);
       }
     };
 
@@ -432,7 +379,6 @@ export function JobFilters({
 
   useEffect(() => {
     setDrawerOpen(false);
-    setActiveSection(null);
   }, [paramsKey]);
 
   const departmentByCode = useMemo(
@@ -582,6 +528,14 @@ export function JobFilters({
   const sortBy = getValues(pillParams, "sortBy")[0] ?? "";
   const sortDir = getValues(pillParams, "sortDir")[0] ?? "asc";
   const currentSortLabel = sortLabels.get(sortBy) ?? "Default";
+  const moreSectionCount =
+    Number(Boolean(sortBy)) +
+    Number(Boolean(priority)) +
+    Number(Boolean(sourceManager)) +
+    Number(Boolean(sourcePartner)) +
+    Number(Boolean(xpmSubState)) +
+    Number(Boolean(missing)) +
+    Number(Boolean(archived && archived !== "false"));
 
   const showAssignees = config?.assignees !== false;
   const showDepartments = config?.departments !== false;
@@ -628,30 +582,47 @@ export function JobFilters({
       key: "more",
       title: "More",
       description: "Sort and advanced filters",
-      count:
-        Number(Boolean(sortBy)) +
-        Number(Boolean(priority)) +
-        Number(Boolean(sourceManager)) +
-        Number(Boolean(sourcePartner)) +
-        Number(Boolean(xpmSubState)) +
-        Number(Boolean(missing)) +
-        Number(Boolean(archived && archived !== "false")),
+      count: moreSectionCount,
     },
   ];
 
-  const openDrawer = () => setDrawerOpen(true);
-  const closeDrawer = () => {
-    setDrawerOpen(false);
-    setActiveSection(null);
-  };
+  const defaultOpenSections = useMemo(() => {
+    const next = new Set<FilterSection>();
+    if (showAssignees && getValues(searchParams, "staffUserId").length) next.add("staff");
+    if (showAssignees && getValues(searchParams, "managerUserId").length) next.add("manager");
+    if (showAssignees && getValues(searchParams, "supervisorUserId").length) next.add("supervisor");
+    if (showDepartments && getValues(searchParams, "department").length) next.add("department");
+    if (showStates && activeStateFilters.length) next.add("state");
+    if (getValues(searchParams, "clientCategory").length) next.add("client");
+    if (moreSectionCount > 0) next.add("more");
+    return next;
+  }, [activeStateFilters.length, moreSectionCount, searchParams, showAssignees, showDepartments, showStates]);
 
-  function renderVisibleSection() {
-    switch (activeSection) {
+  const [openSections, setOpenSections] = useState<Set<FilterSection>>(() => defaultOpenSections);
+
+  useEffect(() => {
+    setOpenSections(defaultOpenSections);
+  }, [defaultOpenSections, paramsKey]);
+
+  const openDrawer = () => setDrawerOpen(true);
+  const closeDrawer = () => setDrawerOpen(false);
+
+  function toggleSection(section: FilterSection, open: boolean) {
+    setOpenSections((prev) => {
+      const next = new Set(prev);
+      if (open) next.add(section);
+      else next.delete(section);
+      return next;
+    });
+  }
+
+  function renderSectionContent(section: FilterSection) {
+    switch (section) {
       case "staff":
         return (
           <MultiSelectFilter
             compact
-            className="px-4 pb-4"
+            className="px-4 pb-4 pt-3"
             emptyMessage="No staff members matched that search."
             label="Staff"
             name="staffUserId"
@@ -664,7 +635,7 @@ export function JobFilters({
         return (
           <MultiSelectFilter
             compact
-            className="px-4 pb-4"
+            className="px-4 pb-4 pt-3"
             emptyMessage="No managers matched that search."
             label="Manager"
             name="managerUserId"
@@ -677,7 +648,7 @@ export function JobFilters({
         return (
           <MultiSelectFilter
             compact
-            className="px-4 pb-4"
+            className="px-4 pb-4 pt-3"
             emptyMessage="No supervisors matched that search."
             label="Supervisor"
             name="supervisorUserId"
@@ -690,7 +661,7 @@ export function JobFilters({
         return (
           <MultiSelectFilter
             compact
-            className="px-4 pb-4"
+            className="px-4 pb-4 pt-3"
             emptyMessage="No departments matched that search."
             label="Department"
             name="department"
@@ -703,20 +674,20 @@ export function JobFilters({
         return (
           <MultiSelectFilter
             compact
-            className="px-4 pb-4"
+            className="px-4 pb-4 pt-3"
             emptyMessage="No states available."
             label="State"
             name="stateFilter"
             options={[...stateFilterOptions]}
             searchable={false}
-            selectedValues={stateFilters}
+            selectedValues={activeStateFilters}
           />
         );
       case "client":
         return (
           <MultiSelectFilter
             compact
-            className="px-4 pb-4"
+            className="px-4 pb-4 pt-3"
             emptyMessage="No client categories available."
             label="Client"
             name="clientCategory"
@@ -727,7 +698,7 @@ export function JobFilters({
         );
       case "more":
         return (
-          <div className="px-4 pb-4">
+          <div className="px-4 pb-4 pt-3">
             <MoreFilters
               archived={searchParams.get("archived") ?? "false"}
               hasLockedMissing={lockedMissing}
@@ -841,99 +812,59 @@ export function JobFilters({
             id="job-filters-drawer"
             role="dialog"
           >
-            {activeSection ? (
-              <SectionHeader
-                onBack={() => setActiveSection(null)}
-                subtitle={
-                  activeSection === "staff"
-                    ? "Choose the staff assignees to match"
-                    : activeSection === "manager"
-                      ? "Choose the manager assignees to match"
-                      : activeSection === "supervisor"
-                        ? "Choose the supervisor assignees to match"
-                        : activeSection === "department"
-                          ? "Choose the departments to match"
-                          : activeSection === "state"
-                            ? "Choose the workflow states to match"
-                            : activeSection === "client"
-                              ? "Choose the client categories to match"
-                              : "Tune the remaining filters"
-                }
-                title={
-                  activeSection === "staff"
-                    ? "Staff"
-                    : activeSection === "manager"
-                      ? "Manager"
-                      : activeSection === "supervisor"
-                        ? "Supervisor"
-                        : activeSection === "department"
-                          ? "Department"
-                          : activeSection === "state"
-                            ? "State"
-                            : activeSection === "client"
-                              ? "Client"
-                              : "More filters"
-                }
-              />
-            ) : (
-              <header className="flex items-center justify-between border-b border-slate-200/80 px-4 py-4">
-                <div>
-                  <div className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Filters</div>
-                  <div className="text-lg font-semibold text-slate-950">Filter jobs by</div>
-                </div>
-                <button
-                  aria-label="Close filters"
-                  className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-slate-700 transition hover:bg-slate-200"
-                  onClick={closeDrawer}
-                  type="button"
-                >
-                  <X className="h-5 w-5" />
-                </button>
-              </header>
-            )}
+            <header className="flex items-center justify-between border-b border-slate-200/80 px-4 py-4">
+              <div>
+                <div className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Filters</div>
+                <div className="text-lg font-semibold text-slate-950">Filter jobs by</div>
+              </div>
+              <button
+                aria-label="Close filters"
+                className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-slate-700 transition hover:bg-slate-200"
+                onClick={closeDrawer}
+                type="button"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </header>
 
-            <div className="min-h-0 flex-1 overflow-y-auto">
-              {activeSection ? (
-                renderVisibleSection()
-              ) : (
-                <div className="space-y-3 px-4 py-4">
-                  {(sections.filter(Boolean) as Array<{ key: FilterSection; title: string; description: string; count: number }>).map(
-                    (section) => (
-                      <SectionButton
-                        active={activeSection === section.key}
-                        count={section.count}
-                        description={section.description}
-                        key={section.key}
-                        onClick={() => setActiveSection(section.key)}
-                        title={section.title}
-                      />
-                    ),
-                  )}
-                </div>
-              )}
+            <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+              <p className="mb-4 text-xs text-slate-500">Open as many sections as you need. Your selections stay in place until you apply them.</p>
+              <div className="space-y-3">
+                {(sections.filter(Boolean) as Array<{ key: FilterSection; title: string; description: string; count: number }>).map(
+                  (section) => (
+                    <SectionButton
+                      count={section.count}
+                      description={section.description}
+                      key={section.key}
+                      onToggle={(open) => toggleSection(section.key, open)}
+                      open={openSections.has(section.key)}
+                      title={section.title}
+                    >
+                      {renderSectionContent(section.key)}
+                    </SectionButton>
+                  ),
+                )}
+              </div>
             </div>
 
-            {activeSection ? (
-              <DrawerFooter clearHref={basePath} onClose={closeDrawer} />
-            ) : (
-              <footer className="border-t border-slate-200/80 bg-white/95 px-4 py-4">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="text-sm text-slate-600">
-                    {activeFilters.length > 0 ? `${activeFilters.length} filter${activeFilters.length === 1 ? "" : "s"} selected` : "No filters selected"}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {activeFilters.length > 0 ? (
-                      <Link className={cn(buttonVariants({ variant: "outline" }), "whitespace-nowrap")} href={basePath}>
-                        Clear filters
-                      </Link>
-                    ) : null}
-                    <Button onClick={closeDrawer} type="button" variant="ghost">
-                      Done
-                    </Button>
-                  </div>
+            <footer className="border-t border-slate-200/80 bg-white/95 px-4 py-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="text-sm text-slate-600">
+                  {activeFilters.length > 0 ? `${activeFilters.length} filter${activeFilters.length === 1 ? "" : "s"} selected` : "No filters selected"}
                 </div>
-              </footer>
-            )}
+                <div className="flex items-center gap-2">
+                  {activeFilters.length > 0 ? (
+                    <Link className={cn(buttonVariants({ variant: "outline" }), "whitespace-nowrap")} href={basePath}>
+                      Clear filters
+                    </Link>
+                  ) : null}
+                  <Button onClick={closeDrawer} type="button" variant="ghost">
+                    Done
+                  </Button>
+                  <Button type="submit">Apply filters</Button>
+                </div>
+              </div>
+            </footer>
           </aside>
         </div>
       ) : null}
