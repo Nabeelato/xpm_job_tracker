@@ -9,7 +9,11 @@ import {
 } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { normalizeClientName, normalizeHeader } from "@/lib/import/normalize";
-import { detectClientCategoryFromManager, detectDepartment, detectDepartmentFromManager } from "@/lib/import/department";
+import {
+  detectClientCategoryFromSourcePeople,
+  detectDepartment,
+  detectDepartmentFromManager,
+} from "@/lib/import/department";
 import { parseJobStateNumber } from "@/lib/job-state";
 
 const rawAliases = {
@@ -109,7 +113,6 @@ export async function applyImportBatch(
 
       const logs: Prisma.JobChangeLogCreateManyInput[] = [];
       const now = new Date();
-      const softwareClientIds = new Set<string>();
 
       for (const row of importableRows) {
         if (!row.detectedJobId || !row.detectedClientName || !row.detectedJobName) continue;
@@ -131,16 +134,21 @@ export async function applyImportBatch(
         const jobStateNumber = row.newStateNumber ?? parseJobStateNumber(xpmState);
         const sourceManagerName = readRawValue(raw, rawAliases.manager);
         const sourcePartnerName = readRawValue(raw, rawAliases.partner);
-        if (detectClientCategoryFromManager(sourceManagerName) === "SOFTWARE") {
-          softwareClientIds.add(client.id);
-        }
-        // Manager name takes priority: Haseeb→BK, Taaha→SOFTWARE_BK, Maaz→AFS, Faizan→VAT
+        const clientCategory = detectClientCategoryFromSourcePeople(sourceManagerName, sourcePartnerName);
+        // Manager name takes priority: Haseeb→BK, Irfan→SOFTWARE_BK, Maaz→AFS, Faizan→VAT
         const detectedCode =
           detectDepartmentFromManager(sourceManagerName) ??
           row.detectedDepartmentCode ??
           detectDepartment(row.detectedJobName, row.detectedClientName);
         const autoDepartment = departments.get(detectedCode) ?? departments.get("UNCLASSIFIED");
         if (!autoDepartment) throw new Error("Default departments are missing. Run prisma:seed first.");
+
+        if (clientCategory) {
+          await tx.client.update({
+            where: { id: client.id },
+            data: { category: clientCategory },
+          });
+        }
 
         const existingJob = jobByExcelId.get(row.detectedJobId);
         if (!existingJob) {
@@ -208,15 +216,6 @@ export async function applyImportBatch(
           },
         });
         jobByExcelId.set(row.detectedJobId, { ...updated, client });
-      }
-
-      if (softwareClientIds.size > 0) {
-        // Auto-categorize as Software Client when a job manager matches the SOFTWARE rule.
-        // Only fills uncategorized rows — never overrides an admin's explicit MANUAL choice.
-        await tx.client.updateMany({
-          where: { id: { in: [...softwareClientIds] }, category: null },
-          data: { category: "SOFTWARE" },
-        });
       }
 
       const missingJobs = await tx.job.findMany({

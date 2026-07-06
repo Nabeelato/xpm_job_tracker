@@ -4,9 +4,10 @@ import { sanitizeText } from "@/lib/import/normalize";
 export type DepartmentCode = "VAT" | "SOFTWARE_BK" | "BK" | "AFS" | "QC" | "UNCLASSIFIED";
 
 // Manager-name rules that classify the job's client. Used during import to auto-mark client.category.
-// Full-name patterns (not first-name only) so "Taaha Sheikh" doesn't collide with "Taaha Imran".
+// Full-name patterns are used where the manager identity needs to be exact.
 const clientCategoryManagerRules: Array<{ category: ClientCategory; patterns: RegExp[] }> = [
-  { category: "SOFTWARE", patterns: [/\btaaha\s+sheikh\b/i] },
+  { category: "SOFTWARE", patterns: [/\birfan\s+tanvir\b/i] },
+  { category: "MANUAL", patterns: [/\btaaha\s+sheikh\b/i] },
 ];
 
 export function detectClientCategoryFromManager(managerName: string | null | undefined): ClientCategory | null {
@@ -18,11 +19,21 @@ export function detectClientCategoryFromManager(managerName: string | null | und
   return null;
 }
 
+export function detectClientCategoryFromSourcePeople(
+  managerName: string | null | undefined,
+  partnerName: string | null | undefined,
+): ClientCategory | null {
+  const partnerCategory = partnerName && /\btaaha\s+sheikh\b/i.test(sanitizeText(partnerName)) ? "MANUAL" : null;
+  if (partnerCategory) return partnerCategory;
+
+  return detectClientCategoryFromManager(managerName);
+}
+
 // Maps manager names from the import file to their department.
-// Matching is done on first name only so partial values like "Haseeb" still match.
+// Matching is done on exact full-name patterns for the special managers.
 const managerRules: Array<{ code: DepartmentCode; patterns: RegExp[] }> = [
   { code: "BK", patterns: [/\bhaseeb\b/i] },
-  { code: "SOFTWARE_BK", patterns: [/\btaaha\b/i] },
+  { code: "SOFTWARE_BK", patterns: [/\birfan\s+tanvir\b/i] },
   { code: "AFS", patterns: [/\bmaaz\b/i] },
   { code: "VAT", patterns: [/\bfaizan\b/i] },
 ];
