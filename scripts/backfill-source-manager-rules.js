@@ -60,6 +60,7 @@ async function main() {
         c.id AS client_id,
         c.display_name,
         c.category,
+        c.bookkeeping_by,
         d.code AS final_department_code
       FROM jobs j
       JOIN clients c ON c.id = j.client_id
@@ -81,6 +82,7 @@ async function main() {
         clientId: row.client_id,
         clientName: row.display_name,
         currentCategory: row.category,
+        currentBookkeepingBy: row.bookkeeping_by,
         hasIrfanJobs: false,
         hasTaahaJobs: false,
       };
@@ -106,10 +108,13 @@ async function main() {
 
     const previewClients = [...clientTargets.values()].map((row) => {
       const targetCategory = row.hasIrfanJobs ? "SOFTWARE" : row.hasTaahaJobs ? "MANUAL" : null;
+      const targetBookkeepingBy = row.hasTaahaJobs ? "FIRM" : row.currentBookkeepingBy ?? null;
       return {
         ...row,
         targetCategory,
+        targetBookkeepingBy,
         wouldChange: Boolean(targetCategory && targetCategory !== row.currentCategory),
+        bookkeepingWouldChange: Boolean(targetBookkeepingBy && targetBookkeepingBy !== row.currentBookkeepingBy),
       };
     });
 
@@ -126,6 +131,7 @@ async function main() {
             summary: {
               matchedClients: previewClients.length,
               clientsThatWouldChange: previewClients.filter((row) => row.wouldChange).length,
+              bookkeepingFieldsThatWouldChange: previewClients.filter((row) => row.bookkeepingWouldChange).length,
               matchedJobs: previewJobs.length,
               jobsThatWouldChange: previewJobs.filter((row) => row.wouldChange).length,
               softwareClientsToSet: previewClients.filter((row) => row.targetCategory === "SOFTWARE" && row.wouldChange).length,
@@ -157,10 +163,19 @@ async function main() {
       }
 
       let clientCount = 0;
-      for (const row of previewClients.filter((client) => client.wouldChange)) {
+      for (const row of previewClients.filter((client) => client.wouldChange || client.bookkeepingWouldChange)) {
+        const clientData = {};
+        if (row.wouldChange) clientData.category = row.targetCategory;
+        if (row.targetCategory === "MANUAL") {
+          clientData.bookkeepingSoftware = null;
+          clientData.bookkeepingBy = "FIRM";
+        } else if (row.bookkeepingWouldChange) {
+          clientData.bookkeepingBy = row.targetBookkeepingBy;
+        }
+
         await tx.client.update({
           where: { id: row.clientId },
-          data: { category: row.targetCategory },
+          data: clientData,
         });
         clientCount += 1;
       }

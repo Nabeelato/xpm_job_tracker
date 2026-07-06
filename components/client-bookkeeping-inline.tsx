@@ -32,7 +32,10 @@ export function ClientBookkeepingInline({
   async function saveCategory(value: string) {
     const next = value as ClientCategory | "";
     setCategory(next);
-    if (next !== "SOFTWARE") setSoftware("");
+    if (next !== "SOFTWARE") {
+      setSoftware("");
+      setBy("FIRM");
+    }
 
     setSaving(true);
     try {
@@ -45,7 +48,7 @@ export function ClientBookkeepingInline({
         const bkFd = new FormData();
         bkFd.append("clientId", clientId);
         bkFd.append("bookkeepingSoftware", "");
-        bkFd.append("bookkeepingBy", by);
+        bkFd.append("bookkeepingBy", "FIRM");
         await updateClientBookkeepingAction(bkFd);
       }
     } finally {

@@ -4,6 +4,7 @@ import {
   ImportStateComparisonCategory,
   ImportStatus,
   InternalStatus,
+  type BookkeepingBy,
   type ClientCategory,
   type Department,
   type Prisma,
@@ -69,6 +70,11 @@ function mergeClientCategoryTarget(
   return current ?? "MANUAL";
 }
 
+function mergeClientBookkeepingByTarget(current: BookkeepingBy | undefined, next: BookkeepingBy | null): BookkeepingBy | undefined {
+  if (!next) return current;
+  return next;
+}
+
 export async function applyImportBatch(
   importBatchId: string,
   changedById: string,
@@ -117,6 +123,7 @@ export async function applyImportBatch(
       });
       const jobByExcelId = new Map(existingJobs.map((job) => [job.jobIdFromExcel, job]));
       const clientCategoryTargets = new Map<string, ClientCategory>();
+      const clientBookkeepingByTargets = new Map<string, BookkeepingBy>();
 
       const logs: Prisma.JobChangeLogCreateManyInput[] = [];
       const now = new Date();
@@ -143,6 +150,7 @@ export async function applyImportBatch(
         const sourcePartnerName = readRawValue(raw, rawAliases.partner);
         const sourceManagerDepartmentCode = detectDepartmentFromManager(sourceManagerName);
         const sourceClientCategory = detectClientCategoryFromManager(sourceManagerName);
+        const sourceClientBookkeepingBy = sourceClientCategory === "MANUAL" ? "FIRM" : null;
         // Source manager takes priority when it matches a department rule.
         const detectedCode =
           sourceManagerDepartmentCode ??
@@ -180,6 +188,9 @@ export async function applyImportBatch(
           const currentTarget = clientCategoryTargets.get(client.id);
           const mergedTarget = mergeClientCategoryTarget(currentTarget, sourceClientCategory);
           if (mergedTarget) clientCategoryTargets.set(client.id, mergedTarget);
+          const currentBookkeepingTarget = clientBookkeepingByTargets.get(client.id);
+          const mergedBookkeepingTarget = mergeClientBookkeepingByTarget(currentBookkeepingTarget, sourceClientBookkeepingBy);
+          if (mergedBookkeepingTarget) clientBookkeepingByTargets.set(client.id, mergedBookkeepingTarget);
           continue;
         }
 
@@ -236,6 +247,9 @@ export async function applyImportBatch(
         const currentTarget = clientCategoryTargets.get(client.id);
         const mergedTarget = mergeClientCategoryTarget(currentTarget, sourceClientCategory);
         if (mergedTarget) clientCategoryTargets.set(client.id, mergedTarget);
+        const currentBookkeepingTarget = clientBookkeepingByTargets.get(client.id);
+        const mergedBookkeepingTarget = mergeClientBookkeepingByTarget(currentBookkeepingTarget, sourceClientBookkeepingBy);
+        if (mergedBookkeepingTarget) clientBookkeepingByTargets.set(client.id, mergedBookkeepingTarget);
       }
 
       const clientsToUpdate = clientCategoryTargets.size
@@ -247,10 +261,24 @@ export async function applyImportBatch(
 
       for (const client of clientsToUpdate) {
         const targetCategory = clientCategoryTargets.get(client.id);
+        const targetBookkeepingBy = clientBookkeepingByTargets.get(client.id);
+        const updateData: { category?: ClientCategory; bookkeepingBy?: BookkeepingBy | null; bookkeepingSoftware?: null } = {};
+
         if (targetCategory && client.category !== targetCategory) {
+          updateData.category = targetCategory;
+        }
+
+        if (targetCategory === "MANUAL") {
+          updateData.bookkeepingBy = "FIRM";
+          updateData.bookkeepingSoftware = null;
+        } else if (targetBookkeepingBy && client.bookkeepingBy !== targetBookkeepingBy) {
+          updateData.bookkeepingBy = targetBookkeepingBy;
+        }
+
+        if (Object.keys(updateData).length > 0) {
           await tx.client.update({
             where: { id: client.id },
-            data: { category: targetCategory },
+            data: updateData,
           });
         }
       }

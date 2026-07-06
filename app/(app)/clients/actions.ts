@@ -17,9 +17,14 @@ export async function updateClientCategoryAction(formData: FormData) {
   const category =
     raw === "" ? null : Object.values(ClientCategory).includes(raw as ClientCategory) ? (raw as ClientCategory) : null;
 
+  const data =
+    category === "MANUAL"
+      ? { category, bookkeepingSoftware: null, bookkeepingBy: BookkeepingBy.FIRM }
+      : { category };
+
   await prisma.client.update({
     where: { id: clientId },
-    data: { category },
+    data,
   });
 
   revalidatePath(`/clients/${clientId}`);
