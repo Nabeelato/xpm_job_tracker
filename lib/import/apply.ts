@@ -255,7 +255,7 @@ export async function applyImportBatch(
       const clientsToUpdate = clientCategoryTargets.size
         ? await tx.client.findMany({
             where: { id: { in: [...clientCategoryTargets.keys()] } },
-            select: { id: true, category: true },
+            select: { id: true, category: true, bookkeepingBy: true },
           })
         : [];
 
