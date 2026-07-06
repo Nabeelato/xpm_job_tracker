@@ -1,5 +1,6 @@
 import { ImportRowAction, ImportStateComparisonCategory, type Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
+import { detectDepartmentFromManager } from "@/lib/import/department";
 import { normalizeClientName } from "@/lib/import/normalize";
 import { parseImportFile } from "@/lib/import/parser";
 import { isMainState } from "@/lib/job-state";
@@ -106,10 +107,16 @@ export async function stageImportBatch(file: File, uploadedById: string, xpmDown
         action = ImportRowAction.NEW_JOB;
         newJobsCount += 1;
       } else {
-        const autoDepartment = departmentByCode.get(row.detectedDepartmentCode);
-        const nextFinalDepartmentId = matchedJob.departmentManuallyOverridden
-          ? matchedJob.finalDepartmentId
-          : autoDepartment?.id;
+        const sourceManagerDepartmentCode = detectDepartmentFromManager(row.managerName);
+        const shouldForceDepartment = sourceManagerDepartmentCode !== null;
+        const effectiveDepartmentCode = sourceManagerDepartmentCode ?? row.detectedDepartmentCode;
+        const autoDepartment = departmentByCode.get(effectiveDepartmentCode);
+        const nextFinalDepartmentId = shouldForceDepartment
+          ? autoDepartment?.id
+          : matchedJob.departmentManuallyOverridden
+            ? matchedJob.finalDepartmentId
+            : autoDepartment?.id;
+        const manualOverrideCleared = shouldForceDepartment && matchedJob.departmentManuallyOverridden;
         const sourceChanged =
           matchedJob.client.normalizedClientKey !== clientKey ||
           matchedJob.jobName !== row.jobName ||
@@ -119,7 +126,8 @@ export async function stageImportBatch(file: File, uploadedById: string, xpmDown
           !sameNullable(matchedJob.sourceManagerName, row.managerName) ||
           !sameNullable(matchedJob.sourcePartnerName, row.partnerName) ||
           !sameNullable(matchedJob.autoDetectedDepartmentId, autoDepartment?.id ?? null) ||
-          (!matchedJob.departmentManuallyOverridden && matchedJob.finalDepartmentId !== nextFinalDepartmentId) ||
+          matchedJob.finalDepartmentId !== nextFinalDepartmentId ||
+          manualOverrideCleared ||
           matchedJob.missingFromLatestImport;
 
         if (sourceChanged) {

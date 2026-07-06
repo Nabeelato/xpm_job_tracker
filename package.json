@@ -13,7 +13,8 @@
     "prisma:seed": "prisma db seed",
     "seed:users": "node scripts/users.js",
     "dry-run:source-manager-category": "node scripts/dry-run-source-manager-category.js",
-    "backfill:client-category-source-people": "node scripts/backfill-client-category-by-source-people.js"
+    "backfill:client-category-source-people": "node scripts/backfill-client-category-by-source-people.js",
+    "backfill:irfan-tanvir-software-bk": "node scripts/backfill-irfan-tanvir-software-bk.js"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.8.0",

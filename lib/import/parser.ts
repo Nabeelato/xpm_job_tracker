@@ -3,7 +3,7 @@ import { parse } from "csv-parse/sync";
 import { createHash } from "crypto";
 import { z } from "zod";
 import { defaultUploadHeaders, maxUploadSizeBytes, requiredUploadHeaders } from "@/lib/constants";
-import { detectDepartment, type DepartmentCode } from "@/lib/import/department";
+import { detectDepartment, detectDepartmentFromManager, type DepartmentCode } from "@/lib/import/department";
 import { normalizeHeader, optionalText, sanitizeText } from "@/lib/import/normalize";
 import { parseJobStateNumber } from "@/lib/job-state";
 
@@ -77,13 +77,14 @@ function buildRows(records: Array<{ rowNumber: number; rawData: Record<string, s
     const jobId = sanitizeText(mapping.jobId ? rawData[mapping.jobId] : "");
     const clientName = sanitizeText(mapping.clientName ? rawData[mapping.clientName] : "");
     const jobName = sanitizeText(mapping.jobName ? rawData[mapping.jobName] : "");
+    const xpmState = optionalText(mapping.xpmState ? rawData[mapping.xpmState] : null);
+    const managerName = optionalText(mapping.managerName ? rawData[mapping.managerName] : null);
+    const partnerName = optionalText(mapping.partnerName ? rawData[mapping.partnerName] : null);
     const errors: string[] = [];
 
     if (!jobId) errors.push("Missing [Job] Job No.");
     if (!clientName) errors.push("Missing [Client] Client");
     if (!jobName) errors.push("Missing [Job] Name");
-
-    const xpmState = optionalText(mapping.xpmState ? rawData[mapping.xpmState] : null);
 
     return {
       rowNumber,
@@ -94,9 +95,9 @@ function buildRows(records: Array<{ rowNumber: number; rawData: Record<string, s
       priority: optionalText(mapping.priority ? rawData[mapping.priority] : null),
       xpmState,
       jobStateNumber: parseJobStateNumber(xpmState),
-      managerName: optionalText(mapping.managerName ? rawData[mapping.managerName] : null),
-      partnerName: optionalText(mapping.partnerName ? rawData[mapping.partnerName] : null),
-      detectedDepartmentCode: detectDepartment(jobName, clientName),
+      managerName,
+      partnerName,
+      detectedDepartmentCode: detectDepartmentFromManager(managerName) ?? detectDepartment(jobName, clientName),
       errorMessage: errors.length ? errors.join(" ") : null,
     };
   });

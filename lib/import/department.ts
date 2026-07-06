@@ -1,12 +1,16 @@
+import type { ClientCategory } from "@prisma/client";
 import { sanitizeText } from "@/lib/import/normalize";
 
 export type DepartmentCode = "VAT" | "SOFTWARE_BK" | "BK" | "AFS" | "QC" | "UNCLASSIFIED";
 
+const taahaManagerPattern = /\btaaha\s+sheikh\b/i;
+const irfanManagerPattern = /\birfan\s+tan(?:v|w)ir\b/i;
+
 // Maps manager names from the import file to their department.
 // Matching is done on exact full-name patterns for the special managers.
 const managerRules: Array<{ code: DepartmentCode; patterns: RegExp[] }> = [
-  { code: "BK", patterns: [/\btaaha\s+sheikh\b/i] },
-  { code: "SOFTWARE_BK", patterns: [/\birfan\s+tanvir\b/i] },
+  { code: "BK", patterns: [taahaManagerPattern] },
+  { code: "SOFTWARE_BK", patterns: [irfanManagerPattern] },
   { code: "AFS", patterns: [/\bmaaz\b/i] },
   { code: "VAT", patterns: [/\bfaizan\b/i] },
 ];
@@ -16,6 +20,20 @@ export function detectDepartmentFromManager(managerName: string | null | undefin
   const name = sanitizeText(managerName);
   for (const rule of managerRules) {
     if (rule.patterns.some((pattern) => pattern.test(name))) return rule.code;
+  }
+  return null;
+}
+
+const clientCategoryRules: Array<{ category: ClientCategory; patterns: RegExp[] }> = [
+  { category: "SOFTWARE", patterns: [irfanManagerPattern] },
+  { category: "MANUAL", patterns: [taahaManagerPattern] },
+];
+
+export function detectClientCategoryFromManager(managerName: string | null | undefined): ClientCategory | null {
+  if (!managerName) return null;
+  const name = sanitizeText(managerName);
+  for (const rule of clientCategoryRules) {
+    if (rule.patterns.some((pattern) => pattern.test(name))) return rule.category;
   }
   return null;
 }

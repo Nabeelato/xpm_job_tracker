@@ -4,12 +4,13 @@ import {
   ImportStateComparisonCategory,
   ImportStatus,
   InternalStatus,
+  type ClientCategory,
   type Department,
   type Prisma,
 } from "@prisma/client";
 import { prisma } from "@/lib/db";
+import { detectClientCategoryFromManager, detectDepartment, detectDepartmentFromManager } from "@/lib/import/department";
 import { normalizeClientName, normalizeHeader } from "@/lib/import/normalize";
-import { detectDepartment, detectDepartmentFromManager } from "@/lib/import/department";
 import { parseJobStateNumber } from "@/lib/job-state";
 
 const rawAliases = {
@@ -59,6 +60,15 @@ function departmentMap(departments: Department[]) {
   return new Map(departments.map((department) => [department.code, department]));
 }
 
+function mergeClientCategoryTarget(
+  current: ClientCategory | undefined,
+  next: ClientCategory | null,
+): ClientCategory | undefined {
+  if (!next) return current;
+  if (next === "SOFTWARE") return "SOFTWARE";
+  return current ?? "MANUAL";
+}
+
 export async function applyImportBatch(
   importBatchId: string,
   changedById: string,
@@ -106,6 +116,7 @@ export async function applyImportBatch(
         include: { client: true },
       });
       const jobByExcelId = new Map(existingJobs.map((job) => [job.jobIdFromExcel, job]));
+      const clientCategoryTargets = new Map<string, ClientCategory>();
 
       const logs: Prisma.JobChangeLogCreateManyInput[] = [];
       const now = new Date();
@@ -130,13 +141,16 @@ export async function applyImportBatch(
         const jobStateNumber = row.newStateNumber ?? parseJobStateNumber(xpmState);
         const sourceManagerName = readRawValue(raw, rawAliases.manager);
         const sourcePartnerName = readRawValue(raw, rawAliases.partner);
-        // Manager name takes priority: Taaha→BK, Irfan→SOFTWARE_BK, Maaz→AFS, Faizan→VAT
+        const sourceManagerDepartmentCode = detectDepartmentFromManager(sourceManagerName);
+        const sourceClientCategory = detectClientCategoryFromManager(sourceManagerName);
+        // Source manager takes priority when it matches a department rule.
         const detectedCode =
-          detectDepartmentFromManager(sourceManagerName) ??
+          sourceManagerDepartmentCode ??
           row.detectedDepartmentCode ??
           detectDepartment(row.detectedJobName, row.detectedClientName);
         const autoDepartment = departments.get(detectedCode) ?? departments.get("UNCLASSIFIED");
         if (!autoDepartment) throw new Error("Default departments are missing. Run prisma:seed first.");
+        const shouldForceDepartment = sourceManagerDepartmentCode !== null;
 
         const existingJob = jobByExcelId.get(row.detectedJobId);
         if (!existingJob) {
@@ -153,6 +167,7 @@ export async function applyImportBatch(
               sourcePartnerName,
               autoDetectedDepartmentId: autoDepartment.id,
               finalDepartmentId: autoDepartment.id,
+              departmentManuallyOverridden: false,
               internalStatus: InternalStatus.UNASSIGNED,
               missingFromLatestImport: false,
               createdFromImportBatchId: importBatchId,
@@ -162,12 +177,18 @@ export async function applyImportBatch(
           });
           jobByExcelId.set(row.detectedJobId, { ...created, client });
           addLog(logs, created.id, importBatchId, changedById, "job_created", null, row.detectedJobId);
+          const currentTarget = clientCategoryTargets.get(client.id);
+          const mergedTarget = mergeClientCategoryTarget(currentTarget, sourceClientCategory);
+          if (mergedTarget) clientCategoryTargets.set(client.id, mergedTarget);
           continue;
         }
 
-        const finalDepartmentId = existingJob.departmentManuallyOverridden
-          ? existingJob.finalDepartmentId
-          : autoDepartment.id;
+        const finalDepartmentId = shouldForceDepartment
+          ? autoDepartment.id
+          : existingJob.departmentManuallyOverridden
+            ? existingJob.finalDepartmentId
+            : autoDepartment.id;
+        const nextDepartmentManuallyOverridden = shouldForceDepartment ? false : existingJob.departmentManuallyOverridden;
         const stateChanged = existingJob.jobStateNumber !== jobStateNumber;
         const stateEnteredAt = stateChanged ? (jobStateNumber ? now : null) : existingJob.stateEnteredAt;
 
@@ -180,9 +201,16 @@ export async function applyImportBatch(
         addLog(logs, existingJob.id, importBatchId, changedById, "source_manager_name", existingJob.sourceManagerName, sourceManagerName);
         addLog(logs, existingJob.id, importBatchId, changedById, "source_partner_name", existingJob.sourcePartnerName, sourcePartnerName);
         addLog(logs, existingJob.id, importBatchId, changedById, "auto_detected_department_id", existingJob.autoDetectedDepartmentId, autoDepartment.id);
-        if (!existingJob.departmentManuallyOverridden) {
-          addLog(logs, existingJob.id, importBatchId, changedById, "final_department_id", existingJob.finalDepartmentId, finalDepartmentId);
-        }
+        addLog(
+          logs,
+          existingJob.id,
+          importBatchId,
+          changedById,
+          "department_manually_overridden",
+          existingJob.departmentManuallyOverridden,
+          nextDepartmentManuallyOverridden,
+        );
+        addLog(logs, existingJob.id, importBatchId, changedById, "final_department_id", existingJob.finalDepartmentId, finalDepartmentId);
         addLog(logs, existingJob.id, importBatchId, changedById, "missing_from_latest_import", existingJob.missingFromLatestImport, false);
 
         const updated = await tx.job.update({
@@ -198,12 +226,33 @@ export async function applyImportBatch(
             sourcePartnerName,
             autoDetectedDepartmentId: autoDepartment.id,
             finalDepartmentId,
+            departmentManuallyOverridden: nextDepartmentManuallyOverridden,
             missingFromLatestImport: false,
             lastSeenImportBatchId: importBatchId,
             lastSeenAt: now,
           },
         });
         jobByExcelId.set(row.detectedJobId, { ...updated, client });
+        const currentTarget = clientCategoryTargets.get(client.id);
+        const mergedTarget = mergeClientCategoryTarget(currentTarget, sourceClientCategory);
+        if (mergedTarget) clientCategoryTargets.set(client.id, mergedTarget);
+      }
+
+      const clientsToUpdate = clientCategoryTargets.size
+        ? await tx.client.findMany({
+            where: { id: { in: [...clientCategoryTargets.keys()] } },
+            select: { id: true, category: true },
+          })
+        : [];
+
+      for (const client of clientsToUpdate) {
+        const targetCategory = clientCategoryTargets.get(client.id);
+        if (targetCategory && client.category !== targetCategory) {
+          await tx.client.update({
+            where: { id: client.id },
+            data: { category: targetCategory },
+          });
+        }
       }
 
       const missingJobs = await tx.job.findMany({

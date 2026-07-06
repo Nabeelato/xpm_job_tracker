@@ -23,7 +23,6 @@ function loadEnvIfNeeded() {
 }
 
 function desiredCategoryForManagers(irfanJobs, taahaJobs) {
-  if (irfanJobs > 0 && taahaJobs > 0) return "CONFLICT";
   if (irfanJobs > 0) return "SOFTWARE";
   if (taahaJobs > 0) return "MANUAL";
   return null;
@@ -54,13 +53,14 @@ async function main() {
         JOIN clients c ON c.id = j.client_id
         LEFT JOIN departments d ON d.id = j.final_department_id
         WHERE j.source_manager_name ILIKE '%irfan tanvir%'
+           OR j.source_manager_name ILIKE '%irfan tanwir%'
            OR j.source_manager_name ILIKE '%taaha sheikh%'
       )
       SELECT
         client_id,
         display_name,
         category,
-        COUNT(*) FILTER (WHERE source_manager_name ILIKE '%irfan tanvir%')::int AS irfan_jobs,
+        COUNT(*) FILTER (WHERE source_manager_name ILIKE '%irfan tanvir%' OR source_manager_name ILIKE '%irfan tanwir%')::int AS irfan_jobs,
         COUNT(*) FILTER (WHERE source_manager_name ILIKE '%taaha sheikh%')::int AS taaha_jobs,
         COUNT(*)::int AS matched_jobs
       FROM matched_jobs
@@ -79,6 +79,7 @@ async function main() {
       JOIN clients c ON c.id = j.client_id
       LEFT JOIN departments d ON d.id = j.final_department_id
       WHERE j.source_manager_name ILIKE '%irfan tanvir%'
+         OR j.source_manager_name ILIKE '%irfan tanwir%'
          OR j.source_manager_name ILIKE '%taaha sheikh%'
       ORDER BY c.display_name ASC, j.job_id_from_excel ASC;
     `);
@@ -87,9 +88,9 @@ async function main() {
       totalMatchedClients: clientRows.length,
       clientsThatWouldChange: clientRows.filter((row) => {
         const desired = desiredCategoryForManagers(Number(row.irfan_jobs), Number(row.taaha_jobs));
-        return desired && desired !== "CONFLICT" && row.category !== desired;
+        return desired && row.category !== desired;
       }).length,
-      conflictClients: clientRows.filter((row) => desiredCategoryForManagers(Number(row.irfan_jobs), Number(row.taaha_jobs)) === "CONFLICT").length,
+      mixedManagerClients: clientRows.filter((row) => Number(row.irfan_jobs) > 0 && Number(row.taaha_jobs) > 0).length,
       totalMatchedJobs: jobRows.length,
     };
 
@@ -103,6 +104,7 @@ async function main() {
         irfanJobs: Number(row.irfan_jobs),
         taahaJobs: Number(row.taaha_jobs),
         matchedJobs: Number(row.matched_jobs),
+        mixedManagers: Number(row.irfan_jobs) > 0 && Number(row.taaha_jobs) > 0,
       };
     });
 

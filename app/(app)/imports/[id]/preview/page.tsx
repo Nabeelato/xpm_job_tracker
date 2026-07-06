@@ -110,7 +110,7 @@ export default async function ImportPreviewPage({
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-sm text-muted-foreground">
-            Confirmation creates or updates jobs, preserves assignments/status/comments/manual department corrections, and marks previously imported missing jobs without deleting them.
+            Confirmation creates or updates jobs from the uploaded file, reclassifies their department from the source manager, updates client categories from the source manager, and marks previously imported missing jobs without deleting them.
           </p>
           {errorMessage ? (
             <p className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
