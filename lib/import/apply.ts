@@ -9,11 +9,7 @@ import {
 } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { normalizeClientName, normalizeHeader } from "@/lib/import/normalize";
-import {
-  detectClientCategoryFromSourcePeople,
-  detectDepartment,
-  detectDepartmentFromManager,
-} from "@/lib/import/department";
+import { detectDepartment, detectDepartmentFromManager } from "@/lib/import/department";
 import { parseJobStateNumber } from "@/lib/job-state";
 
 const rawAliases = {
@@ -134,21 +130,13 @@ export async function applyImportBatch(
         const jobStateNumber = row.newStateNumber ?? parseJobStateNumber(xpmState);
         const sourceManagerName = readRawValue(raw, rawAliases.manager);
         const sourcePartnerName = readRawValue(raw, rawAliases.partner);
-        const clientCategory = detectClientCategoryFromSourcePeople(sourceManagerName, sourcePartnerName);
-        // Manager name takes priority: Haseeb→BK, Irfan→SOFTWARE_BK, Maaz→AFS, Faizan→VAT
+        // Manager name takes priority: Taaha→BK, Irfan→SOFTWARE_BK, Maaz→AFS, Faizan→VAT
         const detectedCode =
           detectDepartmentFromManager(sourceManagerName) ??
           row.detectedDepartmentCode ??
           detectDepartment(row.detectedJobName, row.detectedClientName);
         const autoDepartment = departments.get(detectedCode) ?? departments.get("UNCLASSIFIED");
         if (!autoDepartment) throw new Error("Default departments are missing. Run prisma:seed first.");
-
-        if (clientCategory) {
-          await tx.client.update({
-            where: { id: client.id },
-            data: { category: clientCategory },
-          });
-        }
 
         const existingJob = jobByExcelId.get(row.detectedJobId);
         if (!existingJob) {
