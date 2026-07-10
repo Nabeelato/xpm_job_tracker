@@ -48,6 +48,8 @@ export function JobsTableClient({
   isSupervisor = false,
   currentUserId,
   currentUserRole,
+  isAvailableQueue = false,
+  isMyJobs = false,
   managerUsers,
   supervisorUsers,
   staffBySupervisorId,
@@ -61,6 +63,8 @@ export function JobsTableClient({
   isSupervisor?: boolean;
   currentUserId?: string;
   currentUserRole: "ADMIN" | "MANAGER" | "SUPERVISOR" | "STAFF";
+  isAvailableQueue?: boolean;
+  isMyJobs?: boolean;
   managerUsers: RoleUser[];
   supervisorUsers: RoleUser[];
   staffBySupervisorId: Record<string, RoleUser[]>;
@@ -76,6 +80,8 @@ export function JobsTableClient({
   const [claimingJobId, setClaimingJobId] = useState<string | null>(null);
   const router = useRouter();
   const searchParams = useSearchParams();
+  const canSelfSelect = (currentUserRole === "MANAGER" || currentUserRole === "SUPERVISOR") &&
+    (isAvailableQueue || isMyJobs);
 
   function handleSort(col: string) {
     const params = new URLSearchParams(searchParams.toString());
@@ -161,15 +167,15 @@ export function JobsTableClient({
 
   return (
     <div className="space-y-3">
-      {selectedCount > 0 && (isAdmin || currentUserRole === "MANAGER" || currentUserRole === "SUPERVISOR") ? (
+      {selectedCount > 0 && (isAdmin || canSelfSelect) ? (
         <div className="flex items-center gap-3 rounded-lg border bg-primary/5 p-3">
           <span className="flex-1 text-sm font-semibold">
             {selectedCount} {selectedCount === 1 ? "job" : "jobs"} selected
           </span>
           {isAdmin ? <Button onClick={() => setModalOpen(true)} size="sm">Bulk assign / unassign</Button> : (
             <>
-              <Button onClick={() => void runBulkOwnAction("CLAIM")} size="sm">Bulk claim</Button>
-              <Button onClick={() => void runBulkOwnAction("RELEASE")} size="sm" variant="destructive">Bulk remove</Button>
+              {isAvailableQueue ? <Button onClick={() => void runBulkOwnAction("CLAIM")} size="sm">Bulk claim</Button> : null}
+              {isMyJobs ? <Button onClick={() => void runBulkOwnAction("RELEASE")} size="sm" variant="destructive">Bulk remove</Button> : null}
             </>
           )}
           <Button onClick={clearSelection} size="sm" variant="ghost">
@@ -220,7 +226,7 @@ export function JobsTableClient({
         <Table>
           <TableHeader>
             <TableRow>
-              {(isAdmin || currentUserRole === "MANAGER" || currentUserRole === "SUPERVISOR") ? (
+              {(isAdmin || canSelfSelect) ? (
                 <TableHead className="w-8">
                   <input
                     aria-label="Select all on page"
@@ -239,6 +245,7 @@ export function JobsTableClient({
               <TableHead>Supervisor</TableHead>
               <TableHead>Staff</TableHead>
               <TableHead />
+              {isMyJobs && (currentUserRole === "MANAGER" || currentUserRole === "SUPERVISOR") ? <TableHead /> : null}
               {showAssignmentAge ? <TableHead>Assigned</TableHead> : null}
             </TableRow>
           </TableHeader>
@@ -253,7 +260,7 @@ export function JobsTableClient({
               const staff = roleNames("STAFF");
               const claimRole = currentUserRole === "STAFF" ? "STAFF" :
                 currentUserRole === "SUPERVISOR" ? "SUPERVISOR" : "MANAGER";
-              const isClaimable = currentUserRole !== "ADMIN" &&
+              const isClaimable = isAvailableQueue && currentUserRole !== "ADMIN" &&
                 !job.assignments.some((assignment) => assignment.assignmentRole === claimRole) &&
                 Boolean(job.jobStateNumber && [3, 4, 5, 6].includes(job.jobStateNumber));
               const ownAssignment = job.assignments.find((assignment) =>
@@ -274,7 +281,7 @@ export function JobsTableClient({
                   )}
                   key={job.id}
                 >
-                  {(isAdmin || currentUserRole === "MANAGER" || currentUserRole === "SUPERVISOR") ? (
+                  {(isAdmin || canSelfSelect) ? (
                     <TableCell className="w-8">
                       <input
                         aria-label={`Select ${job.jobIdFromExcel}`}
@@ -340,17 +347,6 @@ export function JobsTableClient({
                         {claimingJobId === job.id ? "Claiming…" : "Claim job"}
                       </Button>
                     </TableCell>
-                  ) : ownAssignment && (currentUserRole === "MANAGER" || currentUserRole === "SUPERVISOR") ? (
-                    <TableCell>
-                      <div className="flex flex-wrap gap-1">
-                        <Button onClick={async () => {
-                          if (!confirm("Remove this job from your list?")) return;
-                          const formData = new FormData(); formData.set("jobId", job.id);
-                          await releaseOwnJobAction(formData); router.refresh();
-                        }} size="sm" type="button" variant="destructive">Remove from my list</Button>
-                        <Button onClick={() => setAssigningJobId(job.id)} size="sm" type="button" variant="outline">Assign</Button>
-                      </div>
-                    </TableCell>
                   ) : (isAdmin || isSupervisor || currentUserRole === "MANAGER") ? (
                     <TableCell>
                       <Button
@@ -363,6 +359,17 @@ export function JobsTableClient({
                       </Button>
                     </TableCell>
                   ) : <TableCell />}
+                  {isMyJobs && (currentUserRole === "MANAGER" || currentUserRole === "SUPERVISOR") ? (
+                    <TableCell>
+                      {ownAssignment ? <Button onClick={async () => {
+                        if (!confirm("Remove this job from your list?")) return;
+                        const formData = new FormData();
+                        formData.set("jobId", job.id);
+                        await releaseOwnJobAction(formData);
+                        router.refresh();
+                      }} size="sm" type="button" variant="destructive">Remove</Button> : null}
+                    </TableCell>
+                  ) : null}
                   {showAssignmentAge ? (
                     <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
                       {job.earliestAssignedAt

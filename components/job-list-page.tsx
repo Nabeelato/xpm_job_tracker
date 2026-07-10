@@ -187,6 +187,8 @@ export async function JobListPage({
         <JobsTableClient
           currentUserId={user.id}
           currentUserRole={user.role}
+          isAvailableQueue={Boolean(effectivePreset.availableJobs)}
+          isMyJobs={Boolean(effectivePreset.myJobs)}
           isAdmin={isAdmin}
           isSupervisor={isSupervisor}
           showAssignmentAge={showAssignmentAge}
