@@ -167,6 +167,8 @@ export function JobsTableClient({
         if (!assigningJob) return null;
         return (
           <AssignSingleJobModal
+            currentUserId={currentUserId ?? ""}
+            currentUserRole={currentUserRole}
             job={{
               id: assigningJob.id,
               jobIdFromExcel: assigningJob.jobIdFromExcel,
