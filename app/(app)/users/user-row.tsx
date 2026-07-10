@@ -43,10 +43,8 @@ export function UserRow({
   transferTargets: TransferTarget[];
   currentUserId: string;
 }) {
-  const [updateState, updateAction, updatePending] = useActionState<ActionResult | null, FormData>(
-    updateUserAction,
-    null,
-  );
+  const [updateState, setUpdateState] = useState<ActionResult | null>(null);
+  const [updatePending, setUpdatePending] = useState(false);
   const [deleteState, deleteAction, deletePending] = useActionState<ActionResult | null, FormData>(
     deleteUserAction,
     null,
@@ -56,12 +54,27 @@ export function UserRow({
     null,
   );
   const [transferOpen, setTransferOpen] = useState(false);
-  const updateFormRef = useRef<HTMLFormElement>(null);
+  const [draft, setDraft] = useState({
+    username: user.username,
+    role: user.role,
+    departmentId: user.departmentId ?? "",
+    supervisorId: user.supervisorId ?? "",
+    active: user.active,
+  });
+  const passwordRef = useRef<HTMLInputElement>(null);
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const initialDraftRef = useRef(true);
 
-  useEffect(() => () => {
+  useEffect(() => {
+    if (initialDraftRef.current) {
+      initialDraftRef.current = false;
+      return;
+    }
     if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
-  }, []);
+    autoSaveTimerRef.current = setTimeout(() => queueSave(draft), 700);
+    return () => { if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current); };
+  }, [draft]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const isSelf = user.id === currentUserId;
   const eligibleTargets = transferTargets.filter((t) => t.id !== user.id);
@@ -82,15 +95,34 @@ export function UserRow({
     }
   }
 
-  function scheduleAutoSave() {
+  function queueSave(snapshot: typeof draft, password = "") {
+    const run = async () => {
+      setUpdatePending(true);
+      const formData = new FormData();
+      formData.set("id", user.id);
+      formData.set("username", snapshot.username);
+      formData.set("role", snapshot.role);
+      formData.set("departmentId", snapshot.departmentId);
+      formData.set("supervisorId", snapshot.supervisorId);
+      if (snapshot.active) formData.set("active", "on");
+      formData.set("newPassword", password);
+      const result = await updateUserAction(null, formData);
+      setUpdateState(result);
+      setUpdatePending(false);
+      if (result.ok && passwordRef.current) passwordRef.current.value = "";
+    };
+    saveQueueRef.current = saveQueueRef.current.then(run, run);
+  }
+
+  function saveNow(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const password = passwordRef.current?.value ?? "";
+    if (password && password.length < 8) {
+      setUpdateState({ ok: false, error: "Password must be at least 8 characters." });
+      return;
+    }
     if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
-    autoSaveTimerRef.current = setTimeout(() => {
-      const form = updateFormRef.current;
-      if (!form) return;
-      const password = form.elements.namedItem("newPassword") as HTMLInputElement | null;
-      if (password?.value && password.value.length < 8) return;
-      form.requestSubmit();
-    }, 700);
+    queueSave(draft, password);
   }
 
   return (
@@ -98,23 +130,28 @@ export function UserRow({
       <TableCell className="font-medium align-top">{user.name}</TableCell>
       <TableCell className="align-top font-mono text-sm">{user.username}</TableCell>
       <TableCell colSpan={5}>
-        <form action={updateAction} className="space-y-2" onChange={scheduleAutoSave} ref={updateFormRef}>
+        <form className="space-y-2" onSubmit={saveNow}>
           <input name="id" type="hidden" value={user.id} />
           <Input
-            defaultValue={user.username}
+            onChange={(event) => setDraft((current) => ({ ...current, username: event.target.value }))}
             name="username"
             placeholder="Username"
             required
+            value={draft.username}
           />
           <div className="grid gap-2 md:grid-cols-[1fr_1fr_1fr_auto_auto]">
-            <Select defaultValue={user.role} name="role">
+            <Select name="role" onChange={(event) => setDraft((current) => ({
+              ...current,
+              role: event.target.value,
+              supervisorId: event.target.value === "STAFF" ? current.supervisorId : "",
+            }))} value={draft.role}>
               {userRoles.map((role) => (
                 <option key={role} value={role}>
                   {titleCaseEnum(role)}
                 </option>
               ))}
             </Select>
-            <Select defaultValue={user.departmentId ?? ""} name="departmentId">
+            <Select name="departmentId" onChange={(event) => setDraft((current) => ({ ...current, departmentId: event.target.value }))} value={draft.departmentId}>
               <option value="">No department</option>
               {departments.map((department) => (
                 <option key={department.id} value={department.id}>
@@ -122,7 +159,7 @@ export function UserRow({
                 </option>
               ))}
             </Select>
-            <Select defaultValue={user.supervisorId ?? ""} name="supervisorId">
+            <Select disabled={draft.role !== "STAFF"} name="supervisorId" onChange={(event) => setDraft((current) => ({ ...current, supervisorId: event.target.value }))} value={draft.supervisorId}>
               <option value="">No supervisor</option>
               {supervisors
                 .filter((supervisor) => supervisor.id !== user.id)
@@ -133,7 +170,7 @@ export function UserRow({
                 ))}
             </Select>
             <label className="flex items-center gap-2 text-sm">
-              <input defaultChecked={user.active} name="active" type="checkbox" />
+              <input checked={draft.active} name="active" onChange={(event) => setDraft((current) => ({ ...current, active: event.target.checked }))} type="checkbox" />
               Active
             </label>
             <Button disabled={updatePending} size="sm" type="submit" variant="outline">
@@ -144,10 +181,11 @@ export function UserRow({
             minLength={8}
             name="newPassword"
             placeholder="Leave blank to keep current password"
+            ref={passwordRef}
             type="password"
           />
           <p className="text-xs text-muted-foreground">
-            Changes save automatically after you stop editing.
+            Settings save automatically after you stop editing. Use Save now for password changes.
           </p>
           {updateState && !updateState.ok && (
             <p className="text-sm text-destructive">{updateState.error}</p>
