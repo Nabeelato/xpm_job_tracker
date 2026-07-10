@@ -32,6 +32,8 @@ enum AssignmentRole {
 
 enum AssignmentSource {
   MANUAL
+  SELF_CLAIM
+  DEPARTMENT_AUTO
 }
 
 enum ClientCategory {

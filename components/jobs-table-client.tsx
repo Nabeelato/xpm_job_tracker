@@ -13,6 +13,7 @@ import { DepartmentBadge } from "@/components/department-badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
+import { claimJobAction } from "@/app/(app)/jobs/actions";
 
 type RoleUser = { id: string; name: string | null };
 
@@ -46,6 +47,7 @@ export function JobsTableClient({
   isAdmin,
   isSupervisor = false,
   currentUserId,
+  currentUserRole,
   managerUsers,
   supervisorUsers,
   staffBySupervisorId,
@@ -58,6 +60,7 @@ export function JobsTableClient({
   isAdmin: boolean;
   isSupervisor?: boolean;
   currentUserId?: string;
+  currentUserRole: "ADMIN" | "MANAGER" | "SUPERVISOR" | "STAFF";
   managerUsers: RoleUser[];
   supervisorUsers: RoleUser[];
   staffBySupervisorId: Record<string, RoleUser[]>;
@@ -69,6 +72,7 @@ export function JobsTableClient({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [modalOpen, setModalOpen] = useState(false);
   const [assigningJobId, setAssigningJobId] = useState<string | null>(null);
+  const [claimingJobId, setClaimingJobId] = useState<string | null>(null);
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -202,15 +206,21 @@ export function JobsTableClient({
               <TableHead>Manager</TableHead>
               <TableHead>Supervisor</TableHead>
               <TableHead>Staff</TableHead>
-              {(isAdmin || isSupervisor) ? <TableHead /> : null}
+              <TableHead />
               {showAssignmentAge ? <TableHead>Assigned</TableHead> : null}
             </TableRow>
           </TableHeader>
           <TableBody>
             {jobs.map((job) => {
-              const manager = job.assignments.find((a) => a.assignmentRole === "MANAGER")?.user ?? null;
-              const supervisor = job.assignments.find((a) => a.assignmentRole === "SUPERVISOR")?.user ?? null;
-              const staff = job.assignments.find((a) => a.assignmentRole === "STAFF")?.user ?? null;
+              const roleNames = (role: string) => job.assignments
+                .filter((a) => a.assignmentRole === role)
+                .map((a) => a.user.name ?? a.user.id)
+                .join(", ");
+              const manager = roleNames("MANAGER");
+              const supervisor = roleNames("SUPERVISOR");
+              const staff = roleNames("STAFF");
+              const isClaimable = currentUserRole !== "ADMIN" && job.assignments.length === 0 &&
+                Boolean(job.jobStateNumber && [3, 4, 5, 6].includes(job.jobStateNumber));
               const isChecked = selected.has(job.id);
               // Use local overrides if available, fall back to server-computed values
               const isSoftware = job.clientCategory === "SOFTWARE";
@@ -261,20 +271,38 @@ export function JobsTableClient({
                   <TableCell className="max-w-xs text-muted-foreground">{job.xpmState ?? "-"}</TableCell>
                   <TableCell>
                     <span className={manager ? "text-sm" : "text-sm text-muted-foreground"}>
-                      {manager?.name ?? "—"}
+                      {manager || "—"}
                     </span>
                   </TableCell>
                   <TableCell>
                     <span className={supervisor ? "text-sm" : "text-sm text-muted-foreground"}>
-                      {supervisor?.name ?? "—"}
+                      {supervisor || "—"}
                     </span>
                   </TableCell>
                   <TableCell>
                     <span className={staff ? "text-sm" : "text-sm text-muted-foreground"}>
-                      {staff?.name ?? "—"}
+                      {staff || "—"}
                     </span>
                   </TableCell>
-                  {(isAdmin || isSupervisor) ? (
+                  {isClaimable ? (
+                    <TableCell>
+                      <Button
+                        disabled={claimingJobId === job.id}
+                        onClick={async () => {
+                          setClaimingJobId(job.id);
+                          const formData = new FormData();
+                          formData.set("jobId", job.id);
+                          await claimJobAction(formData);
+                          router.refresh();
+                          setClaimingJobId(null);
+                        }}
+                        size="sm"
+                        type="button"
+                      >
+                        {claimingJobId === job.id ? "Claiming…" : "Claim job"}
+                      </Button>
+                    </TableCell>
+                  ) : (isAdmin || isSupervisor || currentUserRole === "MANAGER") ? (
                     <TableCell>
                       <Button
                         onClick={() => setAssigningJobId(job.id)}
@@ -285,7 +313,7 @@ export function JobsTableClient({
                         Assign
                       </Button>
                     </TableCell>
-                  ) : null}
+                  ) : <TableCell />}
                   {showAssignmentAge ? (
                     <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
                       {job.earliestAssignedAt

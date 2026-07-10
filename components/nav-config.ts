@@ -10,6 +10,7 @@ import {
   FileUp,
   Home,
   Search,
+  Inbox,
   User,
   Users,
 } from "lucide-react";
@@ -36,6 +37,7 @@ export const navSections: NavSection[] = [
     label: "Jobs",
     items: [
       { href: "/jobs", label: "All Jobs", icon: BriefcaseBusiness },
+      { href: "/jobs/queue", label: "Available Queue", icon: Inbox },
       { href: "/jobs/my", label: "My Jobs", icon: User },
       { href: "/jobs/completed", label: "Completed", icon: CheckCircle2 },
       { href: "/jobs/cancelled", label: "Cancelled", icon: CircleX },

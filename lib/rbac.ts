@@ -73,15 +73,36 @@ export function canArchiveJobs(role: UserRole) {
 
 export function visibleJobsWhere(user: AppSessionUser): Prisma.JobWhereInput {
   if (user.role === "ADMIN" || user.departmentCode === "QC") return {};
-  return { assignments: { some: { userId: user.id, active: true } } };
+  return {
+    OR: [
+      { assignments: { some: { userId: user.id, active: true } } },
+      ...(user.departmentId
+        ? [{
+            finalDepartmentId: user.departmentId,
+            jobStateNumber: { in: [3, 4, 5, 6] },
+            archived: false,
+            assignments: { none: { active: true } },
+          }]
+        : []),
+    ],
+  };
 }
 
 export function canWriteDiary(user: AppSessionUser) {
   return user.role === "ADMIN" || user.role === "MANAGER" || user.departmentCode === "QC";
 }
 
-export function assertCanViewJob(user: AppSessionUser, job: { assignments: Array<{ userId: string }> }) {
+export function assertCanViewJob(user: AppSessionUser, job: {
+  assignments: Array<{ userId: string }>;
+  finalDepartmentId?: string;
+  jobStateNumber?: number | null;
+  archived?: boolean;
+}) {
   if (user.role === "ADMIN" || user.departmentCode === "QC") return true;
   if (job.assignments.some((assignment) => assignment.userId === user.id)) return true;
+  if (
+    user.departmentId && job.finalDepartmentId === user.departmentId && !job.archived &&
+    job.jobStateNumber && [3, 4, 5, 6].includes(job.jobStateNumber) && job.assignments.length === 0
+  ) return true;
   redirect("/jobs/my");
 }

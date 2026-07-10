@@ -264,6 +264,59 @@ export async function assignJobAction(formData: FormData) {
   revalidatePath("/jobs");
 }
 
+export async function claimJobAction(formData: FormData) {
+  const user = await requireUser();
+  const jobId = String(formData.get("jobId") ?? "");
+  if (!jobId || !user.departmentId) return;
+
+  const assignmentRole = user.role === "STAFF"
+    ? AssignmentRole.STAFF
+    : user.role === "SUPERVISOR"
+      ? AssignmentRole.SUPERVISOR
+      : AssignmentRole.MANAGER;
+
+  await prisma.$transaction(async (tx) => {
+    const job = await tx.job.findFirst({
+      where: {
+        id: jobId,
+        finalDepartmentId: user.departmentId!,
+        jobStateNumber: { in: [3, 4, 5, 6] },
+        archived: false,
+        assignments: { none: { active: true } },
+      },
+      select: { id: true, internalStatus: true },
+    });
+    if (!job) return;
+
+    await tx.jobAssignment.create({
+      data: {
+        jobId: job.id,
+        userId: user.id,
+        assignmentRole,
+        assignmentSource: AssignmentSource.SELF_CLAIM,
+        assignedById: user.id,
+      },
+    });
+    if (job.internalStatus === InternalStatus.UNASSIGNED) {
+      await tx.job.update({ where: { id: job.id }, data: { internalStatus: InternalStatus.ASSIGNED } });
+    }
+    await tx.jobChangeLog.create({
+      data: {
+        jobId: job.id,
+        changedById: user.id,
+        changeSource: ChangeSource.USER,
+        fieldName: "self_claim",
+        oldValue: null,
+        newValue: assignmentRole,
+      },
+    });
+  }, { isolationLevel: "Serializable" });
+
+  revalidatePath(`/jobs/${jobId}`);
+  revalidatePath("/jobs");
+  revalidatePath("/jobs/my");
+}
+
 export async function setJobRoleAssignmentAction(formData: FormData) {
   const user = await requireUser();
 

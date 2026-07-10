@@ -20,6 +20,7 @@ type Preset = {
   stateSet?: "main" | "workflow" | "other";
   missing?: boolean;
   myJobs?: boolean;
+  availableJobs?: boolean;
   stateGroup?: JobStateGroup;
   stateNumbers?: number[];
   tabs?: JobTabsConfig;
@@ -30,6 +31,7 @@ function paramsWithPreset(params: URLSearchParams, preset: Preset) {
   if (preset.department) next.set("department", preset.department);
   if (preset.missing !== undefined) next.set("missing", String(preset.missing));
   if (preset.myJobs) next.set("myJobs", "true");
+  if (preset.availableJobs) next.set("availableJobs", "true");
   const hasExplicitState =
     next.has("stateFilter") ||
     next.has("jobStateNumber") ||
@@ -184,6 +186,7 @@ export async function JobListPage({
         <Suspense fallback={null}>
         <JobsTableClient
           currentUserId={user.id}
+          currentUserRole={user.role}
           isAdmin={isAdmin}
           isSupervisor={isSupervisor}
           showAssignmentAge={showAssignmentAge}

@@ -182,8 +182,10 @@ export function buildJobReportWhere(
   const archived = param(params, "archived") ?? "false";
   const xpmSubState = param(params, "xpmSubState");
   const myJobs = param(params, "myJobs");
+  const availableJobs = param(params, "availableJobs");
 
   if (myJobs === "true") and.push({ assignments: { some: { userId: user.id, active: true } } });
+  if (availableJobs === "true") and.push({ assignments: { none: { active: true } } });
 
   if (query) {
     and.push({

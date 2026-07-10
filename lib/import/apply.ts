@@ -1,4 +1,6 @@
 import {
+  AssignmentRole,
+  AssignmentSource,
   ChangeSource,
   ImportRowAction,
   ImportStateComparisonCategory,
@@ -13,6 +15,7 @@ import { prisma } from "@/lib/db";
 import { detectClientCategoryFromManager, detectDepartment, detectDepartmentFromManager } from "@/lib/import/department";
 import { normalizeClientName, normalizeHeader } from "@/lib/import/normalize";
 import { parseJobStateNumber } from "@/lib/job-state";
+import { departmentDefaultManagerNames } from "@/lib/constants";
 
 const rawAliases = {
   priority: ["[Job] Priority", "priority"],
@@ -105,6 +108,25 @@ export async function applyImportBatch(
       }
 
       const departments = departmentMap(await tx.department.findMany());
+      const defaultManagerEntries = Object.entries(departmentDefaultManagerNames);
+      const defaultManagerUsers = await tx.user.findMany({
+        where: {
+          active: true,
+          role: { in: ["ADMIN", "MANAGER"] },
+          name: { in: defaultManagerEntries.flatMap(([, names]) => names) },
+        },
+        select: { id: true, name: true },
+      });
+      const defaultManagerIdByDepartment = new Map(
+        defaultManagerEntries.flatMap(([code, names]) => {
+          const matched = defaultManagerUsers.find(
+            (candidate) => names.some(
+              (name) => candidate.name.trim().toLocaleLowerCase() === name.toLocaleLowerCase(),
+            ),
+          );
+          return matched ? [[code, matched.id] as const] : [];
+        }),
+      );
 
       const importableRows = batch.rows.filter(
         (row) =>
@@ -250,6 +272,37 @@ export async function applyImportBatch(
         const currentBookkeepingTarget = clientBookkeepingByTargets.get(client.id);
         const mergedBookkeepingTarget = mergeClientBookkeepingByTarget(currentBookkeepingTarget, sourceClientBookkeepingBy);
         if (mergedBookkeepingTarget) clientBookkeepingByTargets.set(client.id, mergedBookkeepingTarget);
+      }
+
+      const importedJobs = await tx.job.findMany({
+        where: { jobIdFromExcel: { in: importJobIds } },
+        select: {
+          id: true,
+          finalDepartment: { select: { code: true } },
+          assignments: {
+            where: { active: true, assignmentRole: AssignmentRole.MANAGER },
+            select: { id: true },
+          },
+        },
+      });
+      for (const job of importedJobs) {
+        if (job.assignments.length) continue;
+        const managerId = defaultManagerIdByDepartment.get(job.finalDepartment.code);
+        if (!managerId) continue;
+        await tx.jobAssignment.create({
+          data: {
+            jobId: job.id,
+            userId: managerId,
+            assignmentRole: AssignmentRole.MANAGER,
+            assignmentSource: AssignmentSource.DEPARTMENT_AUTO,
+            assignedById: changedById,
+          },
+        });
+        await tx.job.updateMany({
+          where: { id: job.id, internalStatus: InternalStatus.UNASSIGNED },
+          data: { internalStatus: InternalStatus.ASSIGNED },
+        });
+        addLog(logs, job.id, importBatchId, changedById, "department_auto_assignment", null, managerId);
       }
 
       const clientsToUpdate = clientCategoryTargets.size
