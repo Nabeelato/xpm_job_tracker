@@ -70,7 +70,7 @@ export async function updateUserAction(_prev: ActionResult | null, formData: For
     username,
     role,
     departmentId,
-    supervisorId: role === UserRole.STAFF ? supervisorId : null,
+    supervisorId,
     active,
   };
 

@@ -143,7 +143,6 @@ export function UserRow({
             <Select name="role" onChange={(event) => setDraft((current) => ({
               ...current,
               role: event.target.value,
-              supervisorId: event.target.value === "STAFF" ? current.supervisorId : "",
             }))} value={draft.role}>
               {userRoles.map((role) => (
                 <option key={role} value={role}>
@@ -159,7 +158,7 @@ export function UserRow({
                 </option>
               ))}
             </Select>
-            <Select disabled={draft.role !== "STAFF"} name="supervisorId" onChange={(event) => setDraft((current) => ({ ...current, supervisorId: event.target.value }))} value={draft.supervisorId}>
+            <Select name="supervisorId" onChange={(event) => setDraft((current) => ({ ...current, supervisorId: event.target.value }))} value={draft.supervisorId}>
               <option value="">No supervisor</option>
               {supervisors
                 .filter((supervisor) => supervisor.id !== user.id)
