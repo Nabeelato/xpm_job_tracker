@@ -18,6 +18,7 @@ import {
   assertCanViewJob,
   canArchiveJobs,
   canAssignJobs,
+  assignmentRoleForUser,
   requireUser,
   visibleJobsWhere,
 } from "@/lib/rbac";
@@ -29,7 +30,7 @@ async function getVisibleJobOrRedirect(jobId: string) {
     include: {
       assignments: {
         where: { active: true },
-        select: { userId: true },
+        select: { userId: true, assignmentRole: true },
       },
     },
   });
@@ -269,11 +270,7 @@ export async function claimJobAction(formData: FormData) {
   const jobId = String(formData.get("jobId") ?? "");
   if (!jobId || !user.departmentId) return;
 
-  const assignmentRole = user.role === "STAFF"
-    ? AssignmentRole.STAFF
-    : user.role === "SUPERVISOR"
-      ? AssignmentRole.SUPERVISOR
-      : AssignmentRole.MANAGER;
+  const assignmentRole = assignmentRoleForUser(user.role);
 
   await prisma.$transaction(async (tx) => {
     const job = await tx.job.findFirst({
@@ -282,9 +279,9 @@ export async function claimJobAction(formData: FormData) {
         finalDepartmentId: user.departmentId!,
         jobStateNumber: { in: [3, 4, 5, 6] },
         archived: false,
-        assignments: { none: { active: true } },
+        assignments: { none: { active: true, assignmentRole } },
       },
-      select: { id: true, internalStatus: true },
+      select: { id: true, jobIdFromExcel: true, internalStatus: true },
     });
     if (!job) return;
 
@@ -310,11 +307,87 @@ export async function claimJobAction(formData: FormData) {
         newValue: assignmentRole,
       },
     });
+    const admins = await tx.user.findMany({ where: { role: "ADMIN", active: true }, select: { id: true } });
+    for (const admin of admins) {
+      await createNotification(tx, {
+        recipientId: admin.id,
+        actorId: user.id,
+        type: NotificationType.ASSIGNMENT_ADDED,
+        title: "Job self-claimed",
+        body: `${user.name ?? "A user"} claimed ${job.jobIdFromExcel} as ${assignmentRole.toLowerCase()}.`,
+        href: `/jobs/${job.id}`,
+        jobId: job.id,
+      });
+    }
   }, { isolationLevel: "Serializable" });
 
   revalidatePath(`/jobs/${jobId}`);
   revalidatePath("/jobs");
   revalidatePath("/jobs/my");
+}
+
+export async function releaseOwnJobAction(formData: FormData) {
+  const user = await requireUser();
+  if (user.role !== "MANAGER" && user.role !== "SUPERVISOR") redirect("/dashboard");
+  const jobId = String(formData.get("jobId") ?? "");
+  if (!jobId) return;
+  const assignmentRole = assignmentRoleForUser(user.role);
+
+  await prisma.$transaction(async (tx) => {
+    const assignment = await tx.jobAssignment.findFirst({
+      where: { jobId, userId: user.id, assignmentRole, active: true },
+      include: { job: { select: { id: true, jobIdFromExcel: true, archived: true } } },
+    });
+    if (!assignment) return;
+    await tx.jobAssignment.update({ where: { id: assignment.id }, data: { active: false } });
+    const remaining = await tx.jobAssignment.count({ where: { jobId, active: true, id: { not: assignment.id } } });
+    if (!remaining && !assignment.job.archived) {
+      await tx.job.update({ where: { id: jobId }, data: { internalStatus: InternalStatus.UNASSIGNED } });
+    }
+    await tx.jobChangeLog.create({
+      data: {
+        jobId,
+        changedById: user.id,
+        changeSource: ChangeSource.USER,
+        fieldName: "self_release",
+        oldValue: assignmentRole,
+        newValue: null,
+      },
+    });
+    const admins = await tx.user.findMany({ where: { role: "ADMIN", active: true }, select: { id: true } });
+    for (const admin of admins) {
+      await createNotification(tx, {
+        recipientId: admin.id,
+        actorId: user.id,
+        type: NotificationType.ASSIGNMENT_REMOVED,
+        title: "Job self-released",
+        body: `${user.name ?? "A user"} removed ${assignment.job.jobIdFromExcel} from their list.`,
+        href: `/jobs/${jobId}`,
+        jobId,
+      });
+    }
+  });
+  revalidatePath("/jobs");
+  revalidatePath("/jobs/my");
+  revalidatePath("/jobs/queue");
+}
+
+export async function bulkOwnJobsAction(formData: FormData) {
+  const user = await requireUser();
+  if (user.role !== "MANAGER" && user.role !== "SUPERVISOR") redirect("/dashboard");
+  const operation = String(formData.get("operation") ?? "");
+  const jobIds = formData.getAll("jobId").map(String).filter(Boolean).slice(0, 500);
+  if (!jobIds.length || !["CLAIM", "RELEASE"].includes(operation)) return;
+
+  for (const jobId of jobIds) {
+    const item = new FormData();
+    item.set("jobId", jobId);
+    if (operation === "CLAIM") await claimJobAction(item);
+    else await releaseOwnJobAction(item);
+  }
+  revalidatePath("/jobs");
+  revalidatePath("/jobs/my");
+  revalidatePath("/jobs/queue");
 }
 
 export async function toggleJobAssignmentAction(formData: FormData) {

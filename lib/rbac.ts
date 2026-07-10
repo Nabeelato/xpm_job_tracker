@@ -1,7 +1,7 @@
 import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
 import { cache } from "react";
-import type { Prisma, UserRole } from "@prisma/client";
+import { AssignmentRole, type Prisma, type UserRole } from "@prisma/client";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 
@@ -71,19 +71,30 @@ export function canArchiveJobs(role: UserRole) {
   return role === "ADMIN" || role === "MANAGER";
 }
 
+export function assignmentRoleForUser(role: UserRole): AssignmentRole {
+  if (role === "STAFF") return AssignmentRole.STAFF;
+  if (role === "SUPERVISOR") return AssignmentRole.SUPERVISOR;
+  return AssignmentRole.MANAGER;
+}
+
+export function availableJobsWhere(user: AppSessionUser): Prisma.JobWhereInput {
+  if (!user.departmentId && user.role !== "ADMIN") return { id: "__none__" };
+  return {
+    ...(user.role === "ADMIN" ? {} : { finalDepartmentId: user.departmentId! }),
+    jobStateNumber: { in: [3, 4, 5, 6] },
+    archived: false,
+    assignments: {
+      none: { active: true, assignmentRole: assignmentRoleForUser(user.role) },
+    },
+  };
+}
+
 export function visibleJobsWhere(user: AppSessionUser): Prisma.JobWhereInput {
   if (user.role === "ADMIN" || user.departmentCode === "QC") return {};
   return {
     OR: [
       { assignments: { some: { userId: user.id, active: true } } },
-      ...(user.departmentId
-        ? [{
-            finalDepartmentId: user.departmentId,
-            jobStateNumber: { in: [3, 4, 5, 6] },
-            archived: false,
-            assignments: { none: { active: true } },
-          }]
-        : []),
+      availableJobsWhere(user),
     ],
   };
 }
@@ -93,7 +104,7 @@ export function canWriteDiary(user: AppSessionUser) {
 }
 
 export function assertCanViewJob(user: AppSessionUser, job: {
-  assignments: Array<{ userId: string }>;
+  assignments: Array<{ userId: string; assignmentRole: AssignmentRole }>;
   finalDepartmentId?: string;
   jobStateNumber?: number | null;
   archived?: boolean;
@@ -102,7 +113,8 @@ export function assertCanViewJob(user: AppSessionUser, job: {
   if (job.assignments.some((assignment) => assignment.userId === user.id)) return true;
   if (
     user.departmentId && job.finalDepartmentId === user.departmentId && !job.archived &&
-    job.jobStateNumber && [3, 4, 5, 6].includes(job.jobStateNumber) && job.assignments.length === 0
+    job.jobStateNumber && [3, 4, 5, 6].includes(job.jobStateNumber) &&
+    !job.assignments.some((assignment) => assignment.assignmentRole === assignmentRoleForUser(user.role))
   ) return true;
   redirect("/jobs/my");
 }

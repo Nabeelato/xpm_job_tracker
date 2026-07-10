@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import type { AssignmentRole, Prisma, UserRole } from "@prisma/client";
 import { stateGroupWhere, xpmSubStateWhere, type JobStateGroup, type XpmSubState } from "@/lib/job-state";
 import { formatDateTime, titleCaseEnum } from "@/lib/utils";
-import { visibleJobsWhere, type AppSessionUser } from "@/lib/rbac";
+import { availableJobsWhere, visibleJobsWhere, type AppSessionUser } from "@/lib/rbac";
 
 export const REPORT_EXPORT_LIMIT = 25_000;
 
@@ -185,7 +185,7 @@ export function buildJobReportWhere(
   const availableJobs = param(params, "availableJobs");
 
   if (myJobs === "true") and.push({ assignments: { some: { userId: user.id, active: true } } });
-  if (availableJobs === "true") and.push({ assignments: { none: { active: true } } });
+  if (availableJobs === "true") and.push(availableJobsWhere(user));
 
   if (query) {
     and.push({

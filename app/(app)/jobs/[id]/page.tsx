@@ -33,12 +33,14 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
       jobName: true,
       priority: true,
       xpmState: true,
+      jobStateNumber: true,
       stateEnteredAt: true,
       sourceManagerName: true,
       sourcePartnerName: true,
       finalDepartmentId: true,
       departmentManuallyOverridden: true,
       internalStatus: true,
+      archived: true,
       missingFromLatestImport: true,
       lastSeenAt: true,
       client: { select: { displayName: true, bookkeepingSoftware: true, bookkeepingBy: true } },
@@ -73,7 +75,11 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
   assertCanViewJob(user, {
     assignments: job.assignments.map((assignment) => ({
       userId: assignment.userId,
+      assignmentRole: assignment.assignmentRole,
     })),
+    finalDepartmentId: job.finalDepartmentId,
+    jobStateNumber: job.jobStateNumber,
+    archived: job.archived,
   });
 
   const [departments, users] = await Promise.all([

@@ -13,7 +13,7 @@ import { DepartmentBadge } from "@/components/department-badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
-import { claimJobAction } from "@/app/(app)/jobs/actions";
+import { bulkOwnJobsAction, claimJobAction, releaseOwnJobAction } from "@/app/(app)/jobs/actions";
 
 type RoleUser = { id: string; name: string | null };
 
@@ -69,7 +69,8 @@ export function JobsTableClient({
   sortBy?: string;
   sortDir?: "asc" | "desc";
 }) {
-  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [selected, setSelected] = useState<Map<string, string>>(new Map());
+  const [selectionLoaded, setSelectionLoaded] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [assigningJobId, setAssigningJobId] = useState<string | null>(null);
   const [claimingJobId, setClaimingJobId] = useState<string | null>(null);
@@ -100,51 +101,77 @@ export function JobsTableClient({
     return () => clearInterval(id);
   }, [router]);
 
+  useEffect(() => {
+    try {
+      const saved = sessionStorage.getItem(`job-selection:${currentUserId}`);
+      if (saved) setSelected(new Map(JSON.parse(saved) as Array<[string, string]>));
+    } catch { /* Ignore invalid browser storage. */ }
+    setSelectionLoaded(true);
+  }, [currentUserId]);
+
+  useEffect(() => {
+    if (!selectionLoaded) return;
+    sessionStorage.setItem(`job-selection:${currentUserId}`, JSON.stringify([...selected.entries()]));
+  }, [currentUserId, selected, selectionLoaded]);
+
   const allOnPageSelected = jobs.length > 0 && jobs.every((j) => selected.has(j.id));
 
   const visibleIds = useMemo(() => jobs.map((j) => j.id), [jobs]);
 
-  function toggleOne(id: string) {
+  function toggleOne(job: JobRow) {
     setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+      const next = new Map(prev);
+      if (next.has(job.id)) next.delete(job.id);
+      else next.set(job.id, job.departmentCode);
       return next;
     });
   }
 
   function toggleAll() {
     setSelected((prev) => {
-      const next = new Set(prev);
+      const next = new Map(prev);
       if (allOnPageSelected) {
         visibleIds.forEach((id) => next.delete(id));
       } else {
-        visibleIds.forEach((id) => next.add(id));
+        jobs.forEach((job) => next.set(job.id, job.departmentCode));
       }
       return next;
     });
   }
 
   function clearSelection() {
-    setSelected(new Set());
+    setSelected(new Map());
   }
 
   const selectedCount = selected.size;
   const selectedJobsForModal = useMemo(
-    () => jobs.filter((j) => selected.has(j.id)).map((j) => ({ id: j.id, departmentCode: j.departmentCode })),
-    [jobs, selected],
+    () => [...selected.entries()].map(([id, departmentCode]) => ({ id, departmentCode })),
+    [selected],
   );
+
+  async function runBulkOwnAction(operation: "CLAIM" | "RELEASE") {
+    if (!confirm(`${operation === "CLAIM" ? "Claim" : "Remove from your list"} ${selectedCount} selected jobs?`)) return;
+    const formData = new FormData();
+    formData.set("operation", operation);
+    for (const id of selected.keys()) formData.append("jobId", id);
+    await bulkOwnJobsAction(formData);
+    clearSelection();
+    router.refresh();
+  }
 
   return (
     <div className="space-y-3">
-      {isAdmin && selectedCount > 0 ? (
+      {selectedCount > 0 && (isAdmin || currentUserRole === "MANAGER" || currentUserRole === "SUPERVISOR") ? (
         <div className="flex items-center gap-3 rounded-lg border bg-primary/5 p-3">
           <span className="flex-1 text-sm font-semibold">
             {selectedCount} {selectedCount === 1 ? "job" : "jobs"} selected
           </span>
-          <Button onClick={() => setModalOpen(true)} size="sm">
-            Bulk assign / unassign
-          </Button>
+          {isAdmin ? <Button onClick={() => setModalOpen(true)} size="sm">Bulk assign / unassign</Button> : (
+            <>
+              <Button onClick={() => void runBulkOwnAction("CLAIM")} size="sm">Bulk claim</Button>
+              <Button onClick={() => void runBulkOwnAction("RELEASE")} size="sm" variant="destructive">Bulk remove</Button>
+            </>
+          )}
           <Button onClick={clearSelection} size="sm" variant="ghost">
             Clear
           </Button>
@@ -155,7 +182,7 @@ export function JobsTableClient({
         managerUsers={managerUsers}
         onClose={() => {
           setModalOpen(false);
-          setSelected(new Set());
+          setSelected(new Map());
         }}
         open={modalOpen}
         selectedJobs={selectedJobsForModal}
@@ -193,7 +220,7 @@ export function JobsTableClient({
         <Table>
           <TableHeader>
             <TableRow>
-              {isAdmin ? (
+              {(isAdmin || currentUserRole === "MANAGER" || currentUserRole === "SUPERVISOR") ? (
                 <TableHead className="w-8">
                   <input
                     aria-label="Select all on page"
@@ -224,8 +251,14 @@ export function JobsTableClient({
               const manager = roleNames("MANAGER");
               const supervisor = roleNames("SUPERVISOR");
               const staff = roleNames("STAFF");
-              const isClaimable = currentUserRole !== "ADMIN" && job.assignments.length === 0 &&
+              const claimRole = currentUserRole === "STAFF" ? "STAFF" :
+                currentUserRole === "SUPERVISOR" ? "SUPERVISOR" : "MANAGER";
+              const isClaimable = currentUserRole !== "ADMIN" &&
+                !job.assignments.some((assignment) => assignment.assignmentRole === claimRole) &&
                 Boolean(job.jobStateNumber && [3, 4, 5, 6].includes(job.jobStateNumber));
+              const ownAssignment = job.assignments.find((assignment) =>
+                assignment.user.id === currentUserId && assignment.assignmentRole === claimRole,
+              );
               const isChecked = selected.has(job.id);
               // Use local overrides if available, fall back to server-computed values
               const isSoftware = job.clientCategory === "SOFTWARE";
@@ -241,12 +274,12 @@ export function JobsTableClient({
                   )}
                   key={job.id}
                 >
-                  {isAdmin ? (
+                  {(isAdmin || currentUserRole === "MANAGER" || currentUserRole === "SUPERVISOR") ? (
                     <TableCell className="w-8">
                       <input
                         aria-label={`Select ${job.jobIdFromExcel}`}
                         checked={isChecked}
-                        onChange={() => toggleOne(job.id)}
+                        onChange={() => toggleOne(job)}
                         type="checkbox"
                       />
                     </TableCell>
@@ -306,6 +339,17 @@ export function JobsTableClient({
                       >
                         {claimingJobId === job.id ? "Claiming…" : "Claim job"}
                       </Button>
+                    </TableCell>
+                  ) : ownAssignment && (currentUserRole === "MANAGER" || currentUserRole === "SUPERVISOR") ? (
+                    <TableCell>
+                      <div className="flex flex-wrap gap-1">
+                        <Button onClick={async () => {
+                          if (!confirm("Remove this job from your list?")) return;
+                          const formData = new FormData(); formData.set("jobId", job.id);
+                          await releaseOwnJobAction(formData); router.refresh();
+                        }} size="sm" type="button" variant="destructive">Remove from my list</Button>
+                        <Button onClick={() => setAssigningJobId(job.id)} size="sm" type="button" variant="outline">Assign</Button>
+                      </div>
                     </TableCell>
                   ) : (isAdmin || isSupervisor || currentUserRole === "MANAGER") ? (
                     <TableCell>

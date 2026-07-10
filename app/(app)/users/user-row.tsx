@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import { ArrowRightLeft, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -56,6 +56,12 @@ export function UserRow({
     null,
   );
   const [transferOpen, setTransferOpen] = useState(false);
+  const updateFormRef = useRef<HTMLFormElement>(null);
+  const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => () => {
+    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+  }, []);
 
   const isSelf = user.id === currentUserId;
   const eligibleTargets = transferTargets.filter((t) => t.id !== user.id);
@@ -76,12 +82,23 @@ export function UserRow({
     }
   }
 
+  function scheduleAutoSave() {
+    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+    autoSaveTimerRef.current = setTimeout(() => {
+      const form = updateFormRef.current;
+      if (!form) return;
+      const password = form.elements.namedItem("newPassword") as HTMLInputElement | null;
+      if (password?.value && password.value.length < 8) return;
+      form.requestSubmit();
+    }, 700);
+  }
+
   return (
     <TableRow>
       <TableCell className="font-medium align-top">{user.name}</TableCell>
       <TableCell className="align-top font-mono text-sm">{user.username}</TableCell>
       <TableCell colSpan={5}>
-        <form action={updateAction} className="space-y-2">
+        <form action={updateAction} className="space-y-2" onChange={scheduleAutoSave} ref={updateFormRef}>
           <input name="id" type="hidden" value={user.id} />
           <Input
             defaultValue={user.username}
@@ -120,7 +137,7 @@ export function UserRow({
               Active
             </label>
             <Button disabled={updatePending} size="sm" type="submit" variant="outline">
-              {updatePending ? "Saving..." : "Save"}
+              {updatePending ? "Saving..." : "Save now"}
             </Button>
           </div>
           <Input
@@ -129,6 +146,9 @@ export function UserRow({
             placeholder="Leave blank to keep current password"
             type="password"
           />
+          <p className="text-xs text-muted-foreground">
+            Changes save automatically after you stop editing.
+          </p>
           {updateState && !updateState.ok && (
             <p className="text-sm text-destructive">{updateState.error}</p>
           )}

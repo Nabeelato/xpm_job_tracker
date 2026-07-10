@@ -8,7 +8,7 @@ export default function AvailableJobsQueuePage({
   return (
     <JobListPage
       basePath="/jobs/queue"
-      description="Unassigned department jobs in workflow states 03 to 06. Claimed jobs leave this queue automatically."
+      description="Workflow 03 to 06 jobs with no assignee in your role. A manager, supervisor, or staff claim removes the job from their role's queue."
       preset={{
         availableJobs: true,
         stateSet: "workflow",
