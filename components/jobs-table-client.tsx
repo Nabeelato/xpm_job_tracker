@@ -143,7 +143,7 @@ export function JobsTableClient({
             {selectedCount} {selectedCount === 1 ? "job" : "jobs"} selected
           </span>
           <Button onClick={() => setModalOpen(true)} size="sm">
-            Assign selected
+            Bulk assign / unassign
           </Button>
           <Button onClick={clearSelection} size="sm" variant="ghost">
             Clear
@@ -159,6 +159,9 @@ export function JobsTableClient({
         }}
         open={modalOpen}
         selectedJobs={selectedJobsForModal}
+        staffUsers={Array.from(new Map(
+          Object.values(staffBySupervisorId).flat().map((staff) => [staff.id, staff]),
+        ).values()).sort((a, b) => (a.name ?? "").localeCompare(b.name ?? ""))}
         supervisorUsers={supervisorUsers}
       />
 

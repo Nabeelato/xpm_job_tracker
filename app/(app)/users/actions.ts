@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import bcrypt from "bcryptjs";
-import { ChangeSource, InternalStatus, UserRole } from "@prisma/client";
+import { AssignmentRole, ChangeSource, InternalStatus, UserRole } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { requireRole } from "@/lib/rbac";
 
@@ -37,7 +37,7 @@ export async function createUserAction(_prev: ActionResult | null, formData: For
 }
 
 export async function updateUserAction(_prev: ActionResult | null, formData: FormData): Promise<ActionResult> {
-  await requireRole(["ADMIN"]);
+  const admin = await requireRole(["ADMIN"]);
   const id = String(formData.get("id") ?? "");
   const username = String(formData.get("username") ?? "").trim();
   const role = String(formData.get("role") ?? "") as UserRole;
@@ -66,16 +66,64 @@ export async function updateUserAction(_prev: ActionResult | null, formData: For
     supervisorId: string | null;
     active: boolean;
     passwordHash?: string;
-  } = { username, role, departmentId, supervisorId, active };
+  } = {
+    username,
+    role,
+    departmentId,
+    supervisorId: role === UserRole.STAFF ? supervisorId : null,
+    active,
+  };
 
   if (newPassword.length >= 8) {
     data.passwordHash = await bcrypt.hash(newPassword, 12);
   }
 
-  await prisma.user.update({ where: { id }, data });
+  const targetAssignmentRole = role === UserRole.STAFF
+    ? AssignmentRole.STAFF
+    : role === UserRole.SUPERVISOR
+      ? AssignmentRole.SUPERVISOR
+      : AssignmentRole.MANAGER;
+  let synchronizedAssignments = 0;
+
+  await prisma.$transaction(async (tx) => {
+    await tx.user.update({ where: { id }, data });
+
+    const mismatchedAssignments = await tx.jobAssignment.findMany({
+      where: {
+        userId: id,
+        active: true,
+        assignmentRole: { not: targetAssignmentRole },
+      },
+      select: { id: true, jobId: true, assignmentRole: true },
+    });
+    if (!mismatchedAssignments.length) return;
+
+    await tx.jobAssignment.updateMany({
+      where: { id: { in: mismatchedAssignments.map((assignment) => assignment.id) } },
+      data: { assignmentRole: targetAssignmentRole },
+    });
+    await tx.jobChangeLog.createMany({
+      data: mismatchedAssignments.map((assignment) => ({
+        jobId: assignment.jobId,
+        changedById: admin.id,
+        changeSource: ChangeSource.USER,
+        fieldName: "assignment_role",
+        oldValue: assignment.assignmentRole,
+        newValue: targetAssignmentRole,
+      })),
+    });
+    synchronizedAssignments = mismatchedAssignments.length;
+  });
 
   revalidatePath("/users");
-  return { ok: true };
+  revalidatePath("/jobs");
+  revalidatePath("/jobs/my");
+  return {
+    ok: true,
+    message: synchronizedAssignments
+      ? `Saved. ${synchronizedAssignments} active job assignment${synchronizedAssignments === 1 ? "" : "s"} updated to ${targetAssignmentRole.toLowerCase()}.`
+      : "Saved.",
+  };
 }
 
 export async function deleteUserAction(_prev: ActionResult | null, formData: FormData): Promise<ActionResult> {

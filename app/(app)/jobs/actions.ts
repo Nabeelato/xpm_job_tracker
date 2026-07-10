@@ -600,39 +600,30 @@ export async function deactivateAssignmentAction(formData: FormData) {
 //     - <userId>   → set that role to this user on each job
 export async function bulkAssignJobRolesAction(formData: FormData) {
   const user = await requireUser();
-  if (!canAssignJobs(user.role)) redirect("/dashboard");
+  if (user.role !== "ADMIN") redirect("/dashboard");
 
   const jobIds = String(formData.get("jobIds") ?? "")
     .split(",")
     .map((id) => id.trim())
     .filter(Boolean);
   if (!jobIds.length) return;
+  const operation = String(formData.get("operation") ?? "");
+  const roleValue = String(formData.get("assignmentRole") ?? "");
+  const targetUserId = String(formData.get("userId") ?? "");
+  if (!['ASSIGN', 'UNASSIGN'].includes(operation)) return;
+  const role = roleValue === "ALL" ? null : roleValue as AssignmentRole;
+  if (role && !Object.values(AssignmentRole).includes(role)) return;
+  if (operation === "ASSIGN" && (!role || !targetUserId)) return;
 
-  const readChange = (raw: FormDataEntryValue | null): string | undefined => {
-    if (raw === null) return undefined;
-    const s = String(raw);
-    if (s === "__skip__") return undefined;
-    return s;
-  };
-  const managerChange = readChange(formData.get("managerUserId"));
-  const supervisorChange = readChange(formData.get("supervisorUserId"));
-  if (managerChange === undefined && supervisorChange === undefined) return;
-
-  const targetUserIds = [managerChange, supervisorChange].filter(
-    (v): v is string => Boolean(v && v.length),
-  );
-  const targetUsers = targetUserIds.length
-    ? await prisma.user.findMany({ where: { id: { in: targetUserIds } } })
-    : [];
-  const byId = new Map(targetUsers.map((u) => [u.id, u]));
-
-  if (managerChange && !byId.get(managerChange)?.active) return;
-  if (supervisorChange && !byId.get(supervisorChange)?.active) return;
-  if (managerChange && !canAssignRoleTo(user, byId.get(managerChange)!, AssignmentRole.MANAGER)) redirect("/dashboard");
-  if (supervisorChange && !canAssignRoleTo(user, byId.get(supervisorChange)!, AssignmentRole.SUPERVISOR)) redirect("/dashboard");
+  const targetUser = targetUserId
+    ? await prisma.user.findUnique({ where: { id: targetUserId } })
+    : null;
+  if (operation === "ASSIGN") {
+    if (!targetUser?.active || !role || !canAssignRoleTo(user, targetUser, role)) return;
+  }
 
   const jobs = await prisma.job.findMany({
-    where: { AND: [{ id: { in: jobIds } }, visibleJobsWhere(user)] },
+    where: { id: { in: jobIds } },
     include: {
       assignments: { where: { active: true }, select: { id: true, userId: true, assignmentRole: true } },
     },
@@ -640,62 +631,60 @@ export async function bulkAssignJobRolesAction(formData: FormData) {
 
   await prisma.$transaction(async (tx) => {
     for (const job of jobs) {
-      if (!managerCanManageJobAssignment(user, job)) continue;
-
-      for (const [role, change] of [
-        ["MANAGER", managerChange],
-        ["SUPERVISOR", supervisorChange],
-      ] as const) {
-        if (change === undefined) continue;
-        const existing = job.assignments.filter((a) => a.assignmentRole === role);
-        const alreadySet = change && existing.some((a) => a.userId === change);
-        if (alreadySet) continue;
-
-        if (existing.length) {
-          await tx.jobAssignment.updateMany({
-            where: { id: { in: existing.map((e) => e.id) } },
-            data: { active: false },
-          });
-          for (const prev of existing) {
-            await createNotification(tx, {
-              recipientId: prev.userId,
-              actorId: user.id,
-              type: NotificationType.ASSIGNMENT_REMOVED,
-              title: "Assignment removed",
-              body: `${user.name ?? "A manager"} removed your ${role.toLowerCase()} assignment from ${job.jobIdFromExcel}.`,
-              href: `/jobs/${job.id}`,
-              jobId: job.id,
-            });
-          }
-        }
-
-        if (change) {
+      if (operation === "ASSIGN" && role && targetUser) {
+        const alreadyAssigned = job.assignments.some((assignment) =>
+          assignment.assignmentRole === role && assignment.userId === targetUser.id,
+        );
+        if (!alreadyAssigned) {
           await tx.jobAssignment.create({
             data: {
               jobId: job.id,
-              userId: change,
+              userId: targetUser.id,
               assignmentRole: role,
               assignmentSource: AssignmentSource.MANUAL,
               assignedById: user.id,
             },
           });
           await createNotification(tx, {
-            recipientId: change,
+            recipientId: targetUser.id,
             actorId: user.id,
             type: NotificationType.ASSIGNMENT_ADDED,
             title: "Job assigned",
-            body: `${user.name ?? "A manager"} assigned ${job.jobIdFromExcel} to you as ${role.toLowerCase()}.`,
+            body: `${user.name ?? "An admin"} assigned ${job.jobIdFromExcel} to you as ${role.toLowerCase()}.`,
             href: `/jobs/${job.id}`,
             jobId: job.id,
           });
         }
+        if (job.internalStatus === InternalStatus.UNASSIGNED) {
+          await tx.job.update({ where: { id: job.id }, data: { internalStatus: InternalStatus.ASSIGNED } });
+        }
+        continue;
       }
 
-      const addingAny = Boolean(managerChange) || Boolean(supervisorChange);
-      if (addingAny && job.internalStatus === InternalStatus.UNASSIGNED) {
+      const removals = job.assignments.filter((assignment) =>
+        (!role || assignment.assignmentRole === role) &&
+        (!targetUserId || assignment.userId === targetUserId),
+      );
+      if (!removals.length) continue;
+      await tx.jobAssignment.updateMany({
+        where: { id: { in: removals.map((assignment) => assignment.id) } },
+        data: { active: false },
+      });
+      for (const removal of removals) {
+        await createNotification(tx, {
+          recipientId: removal.userId,
+          actorId: user.id,
+          type: NotificationType.ASSIGNMENT_REMOVED,
+          title: "Assignment removed",
+          body: `${user.name ?? "An admin"} removed your assignment from ${job.jobIdFromExcel}.`,
+          href: `/jobs/${job.id}`,
+          jobId: job.id,
+        });
+      }
+      if (removals.length === job.assignments.length && !job.archived) {
         await tx.job.update({
           where: { id: job.id },
-          data: { internalStatus: InternalStatus.ASSIGNED },
+          data: { internalStatus: InternalStatus.UNASSIGNED },
         });
       }
     }

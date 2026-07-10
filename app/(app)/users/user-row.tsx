@@ -132,7 +132,7 @@ export function UserRow({
           {updateState && !updateState.ok && (
             <p className="text-sm text-destructive">{updateState.error}</p>
           )}
-          {updateState?.ok && <p className="text-sm text-emerald-700">Saved.</p>}
+          {updateState?.ok && <p className="text-sm text-emerald-700">{updateState.message ?? "Saved."}</p>}
         </form>
 
         <div className="mt-2 flex flex-wrap items-center gap-2">
