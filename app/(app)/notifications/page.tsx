@@ -22,6 +22,13 @@ export default async function NotificationsPage() {
       readAt: true,
       createdAt: true,
       actor: { select: { name: true } },
+      job: {
+        select: {
+          jobIdFromExcel: true,
+          jobName: true,
+          client: { select: { displayName: true } },
+        },
+      },
     },
     orderBy: { createdAt: "desc" },
     take: 100,
@@ -39,7 +46,14 @@ export default async function NotificationsPage() {
       </form>
       {notifications.length ? (
         <div className="space-y-3">
-          {notifications.map((notification) => (
+          {notifications.map((notification) => {
+            const jobLabel = notification.job
+              ? `${notification.job.client.displayName} — ${notification.job.jobName}`
+              : null;
+            const displayBody = notification.job && jobLabel
+              ? notification.body.replaceAll(notification.job.jobIdFromExcel, jobLabel)
+              : notification.body;
+            return (
             <Card className={notification.readAt ? "bg-white" : "border-primary/30 bg-primary/5"} key={notification.id}>
               <CardContent className="flex flex-col gap-3 p-4 md:flex-row md:items-center md:justify-between">
                 <div>
@@ -47,7 +61,7 @@ export default async function NotificationsPage() {
                     <div className="font-medium">{notification.title}</div>
                     <span className="text-xs text-muted-foreground">{titleCaseEnum(notification.type)}</span>
                   </div>
-                  <p className="mt-1 text-sm text-muted-foreground">{notification.body}</p>
+                  <p className="mt-1 text-sm text-muted-foreground">{displayBody}</p>
                   <p className="mt-1 text-xs text-muted-foreground">
                     {notification.actor?.name ?? "System"} | {formatDateTime(notification.createdAt)}
                   </p>
@@ -69,7 +83,8 @@ export default async function NotificationsPage() {
                 </div>
               </CardContent>
             </Card>
-          ))}
+            );
+          })}
         </div>
       ) : (
         <EmptyState title="No notifications" description="Assignment, comment, and diary notifications will appear here." />
