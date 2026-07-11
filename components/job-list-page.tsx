@@ -158,7 +158,7 @@ export async function JobListPage({
   return (
     <>
       <PageHeader description={effectiveDescription} title={effectiveTitle} />
-      {effectivePreset.queueVacancyFilters && user.role === "ADMIN" ? (
+      {effectivePreset.queueVacancyFilters ? (
         <div className="mb-4 flex flex-wrap gap-2 rounded-lg border bg-white p-3">
           {[
             ["", "All workflow jobs"],

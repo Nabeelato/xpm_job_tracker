@@ -187,7 +187,7 @@ export function buildJobReportWhere(
 
   if (myJobs === "true") and.push({ assignments: { some: { userId: user.id, active: true } } });
   if (availableJobs === "true") and.push(availableJobsWhere(user));
-  if (availableJobs === "true" && user.role === "ADMIN") {
+  if (availableJobs === "true") {
     if (queueVacancy === "MANAGER" || queueVacancy === "SUPERVISOR" || queueVacancy === "STAFF") {
       and.push({ assignments: { none: { active: true, assignmentRole: queueVacancy } } });
     } else if (queueVacancy === "ANY") {
