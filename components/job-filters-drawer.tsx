@@ -172,24 +172,6 @@ function Field({
   );
 }
 
-function HiddenValues({
-  name,
-  values,
-}: {
-  name: string;
-  values: string[];
-}) {
-  if (!values.length) return null;
-
-  return (
-    <>
-      {values.map((value, index) => (
-        <input key={`${name}-${index}-${value}`} name={name} type="hidden" value={value} />
-      ))}
-    </>
-  );
-}
-
 function SectionButton({
   children,
   count,
@@ -711,33 +693,29 @@ export function JobFilters({
     }
   }
 
-  const hiddenLegacyAssigneeValues = getValues(searchParams, "assignedUserId");
-  const hiddenMyJobs = searchParams.get("myJobs") ? [searchParams.get("myJobs") ?? ""] : [];
-  const hiddenMissingValue = lockedMissing ? (searchParams.get("missing") ? [searchParams.get("missing") ?? ""] : []) : [];
+  const editableFilterKeys = new Set([
+    "staffUserId", "managerUserId", "supervisorUserId", "department", "stateFilter",
+    "clientCategory", "sortBy", "sortDir", "priority", "sourceManager", "sourcePartner",
+    "xpmSubState", "missing", "archived",
+  ]);
+  if (!showAssignees) {
+    editableFilterKeys.delete("staffUserId");
+    editableFilterKeys.delete("managerUserId");
+    editableFilterKeys.delete("supervisorUserId");
+  }
+  if (!showDepartments) editableFilterKeys.delete("department");
+  if (!showStates) editableFilterKeys.delete("stateFilter");
+  if (lockedMissing) editableFilterKeys.delete("missing");
+  const preservedEntries = Array.from(searchParams.entries()).filter(([key]) =>
+    !["q", "page", "pageSize"].includes(key) && (!drawerOpen || !editableFilterKeys.has(key)),
+  );
 
   return (
     <form action={basePath} className="mb-4 space-y-3">
       {searchParams.get("pageSize") ? <input name="pageSize" type="hidden" value={searchParams.get("pageSize") ?? ""} /> : null}
-      <HiddenValues name="assignedUserId" values={hiddenLegacyAssigneeValues} />
-      <HiddenValues name="myJobs" values={hiddenMyJobs} />
-      {showAssignees ? null : (
-        <>
-          <HiddenValues name="staffUserId" values={getValues(searchParams, "staffUserId")} />
-          <HiddenValues name="managerUserId" values={getValues(searchParams, "managerUserId")} />
-          <HiddenValues name="supervisorUserId" values={getValues(searchParams, "supervisorUserId")} />
-        </>
-      )}
-      {showDepartments ? null : <HiddenValues name="department" values={getValues(searchParams, "department")} />}
-      {showStates ? null : (
-        <>
-          <HiddenValues name="stateFilter" values={getValues(searchParams, "stateFilter")} />
-          <HiddenValues name="stateSet" values={searchParams.get("stateSet") ? [searchParams.get("stateSet") ?? ""] : []} />
-          <HiddenValues name="stateGroup" values={searchParams.get("stateGroup") ? [searchParams.get("stateGroup") ?? ""] : []} />
-          <HiddenValues name="jobStateNumber" values={searchParams.get("jobStateNumber") ? [searchParams.get("jobStateNumber") ?? ""] : []} />
-          <HiddenValues name="stateNumbers" values={getValues(searchParams, "stateNumbers")} />
-        </>
-      )}
-      {lockedMissing ? <HiddenValues name="missing" values={hiddenMissingValue} /> : null}
+      {preservedEntries.map(([key, value], index) => (
+        <input key={`${key}-${value}-${index}`} name={key} type="hidden" value={value} />
+      ))}
 
       <div className="overflow-hidden rounded-[28px] border border-slate-200/80 bg-gradient-to-b from-white to-slate-50/80 shadow-[0_20px_80px_-48px_rgba(15,23,42,0.38)]">
         <div className="flex flex-col gap-3 px-4 py-4 xl:flex-row xl:items-center">

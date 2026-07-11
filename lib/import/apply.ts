@@ -16,6 +16,7 @@ import { detectClientCategoryFromManager, detectDepartment, detectDepartmentFrom
 import { normalizeClientName, normalizeHeader } from "@/lib/import/normalize";
 import { parseJobStateNumber } from "@/lib/job-state";
 import { departmentDefaultManagerNames } from "@/lib/constants";
+import { getSystemSetting } from "@/lib/settings";
 
 const rawAliases = {
   priority: ["[Job] Priority", "priority"],
@@ -83,6 +84,8 @@ export async function applyImportBatch(
   changedById: string,
   options: { allowOlderXpmDownloadedAt?: boolean } = {},
 ) {
+  const classifyClientsFromSourceManager =
+    (await getSystemSetting("classifyClientsFromSourceManager")) !== "false";
   return prisma.$transaction(
     async (tx) => {
       const batch = await tx.importBatch.findUnique({
@@ -171,7 +174,9 @@ export async function applyImportBatch(
         const sourceManagerName = readRawValue(raw, rawAliases.manager);
         const sourcePartnerName = readRawValue(raw, rawAliases.partner);
         const sourceManagerDepartmentCode = detectDepartmentFromManager(sourceManagerName);
-        const sourceClientCategory = detectClientCategoryFromManager(sourceManagerName);
+        const sourceClientCategory = classifyClientsFromSourceManager
+          ? detectClientCategoryFromManager(sourceManagerName)
+          : null;
         const sourceClientBookkeepingBy = sourceClientCategory === "MANUAL" ? "FIRM" : null;
         // Source manager takes priority when it matches a department rule.
         const detectedCode =

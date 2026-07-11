@@ -29,6 +29,10 @@ function revalidateAllJobViews() {
   revalidatePath("/reports");
 }
 
+function jobNotificationLabel(job: { jobName: string; client: { displayName: string } }) {
+  return `${job.client.displayName} — ${job.jobName}`;
+}
+
 async function getVisibleJobOrRedirect(jobId: string) {
   const user = await requireUser();
   const job = await prisma.job.findFirst({
@@ -217,7 +221,10 @@ export async function assignJobAction(formData: FormData) {
   const [job, assignee] = await Promise.all([
     prisma.job.findUnique({
       where: { id: jobId },
-      include: { assignments: { where: { active: true }, select: { userId: true } } },
+      include: {
+        client: { select: { displayName: true } },
+        assignments: { where: { active: true }, select: { userId: true } },
+      },
     }),
     prisma.user.findUnique({ where: { id: userId } }),
   ]);
@@ -245,7 +252,7 @@ export async function assignJobAction(formData: FormData) {
         actorId: user.id,
         type: NotificationType.ASSIGNMENT_ADDED,
         title: "Job assigned",
-        body: `${user.name ?? "A manager"} assigned ${job.jobIdFromExcel} to you.`,
+        body: `${user.name ?? "A manager"} assigned ${jobNotificationLabel(job)} to you.`,
         href: `/jobs/${job.id}`,
         jobId: job.id,
       });
@@ -290,7 +297,12 @@ export async function claimJobAction(formData: FormData) {
         archived: false,
         assignments: { none: { active: true, assignmentRole } },
       },
-      select: { id: true, jobIdFromExcel: true, internalStatus: true },
+      select: {
+        id: true,
+        jobName: true,
+        internalStatus: true,
+        client: { select: { displayName: true } },
+      },
     });
     if (!job) return;
 
@@ -323,7 +335,7 @@ export async function claimJobAction(formData: FormData) {
         actorId: user.id,
         type: NotificationType.ASSIGNMENT_ADDED,
         title: "Job self-claimed",
-        body: `${user.name ?? "A user"} claimed ${job.jobIdFromExcel} as ${assignmentRole.toLowerCase()}.`,
+        body: `${user.name ?? "A user"} claimed ${jobNotificationLabel(job)} as ${assignmentRole.toLowerCase()}.`,
         href: `/jobs/${job.id}`,
         jobId: job.id,
       });
@@ -346,7 +358,16 @@ export async function releaseOwnJobAction(formData: FormData) {
   await prisma.$transaction(async (tx) => {
     const assignment = await tx.jobAssignment.findFirst({
       where: { jobId, userId: user.id, assignmentRole, active: true },
-      include: { job: { select: { id: true, jobIdFromExcel: true, archived: true } } },
+      include: {
+        job: {
+          select: {
+            id: true,
+            jobName: true,
+            archived: true,
+            client: { select: { displayName: true } },
+          },
+        },
+      },
     });
     if (!assignment) return;
     await tx.jobAssignment.update({ where: { id: assignment.id }, data: { active: false } });
@@ -371,7 +392,7 @@ export async function releaseOwnJobAction(formData: FormData) {
         actorId: user.id,
         type: NotificationType.ASSIGNMENT_REMOVED,
         title: "Job self-released",
-        body: `${user.name ?? "A user"} removed ${assignment.job.jobIdFromExcel} from their list.`,
+        body: `${user.name ?? "A user"} removed ${jobNotificationLabel(assignment.job)} from their list.`,
         href: `/jobs/${jobId}`,
         jobId,
       });
@@ -414,6 +435,7 @@ export async function toggleJobAssignmentAction(formData: FormData) {
     prisma.job.findUnique({
       where: { id: jobId },
       include: {
+        client: { select: { displayName: true } },
         assignments: {
           where: { active: true },
           select: { id: true, userId: true, assignmentRole: true },
@@ -455,7 +477,7 @@ export async function toggleJobAssignmentAction(formData: FormData) {
         actorId: user.id,
         type: NotificationType.ASSIGNMENT_ADDED,
         title: "Job assigned",
-        body: `${user.name ?? "A manager"} assigned ${job.jobIdFromExcel} to you as ${assignmentRole.toLowerCase()}.`,
+        body: `${user.name ?? "A manager"} assigned ${jobNotificationLabel(job)} to you as ${assignmentRole.toLowerCase()}.`,
         href: `/jobs/${job.id}`,
         jobId: job.id,
       });
@@ -469,7 +491,7 @@ export async function toggleJobAssignmentAction(formData: FormData) {
         actorId: user.id,
         type: NotificationType.ASSIGNMENT_REMOVED,
         title: "Assignment removed",
-        body: `${user.name ?? "A manager"} removed your ${assignmentRole.toLowerCase()} assignment from ${job.jobIdFromExcel}.`,
+        body: `${user.name ?? "A manager"} removed your ${assignmentRole.toLowerCase()} assignment from ${jobNotificationLabel(job)}.`,
         href: `/jobs/${job.id}`,
         jobId: job.id,
       });
@@ -507,7 +529,10 @@ export async function setJobRoleAssignmentAction(formData: FormData) {
 
   const job = await prisma.job.findUnique({
     where: { id: jobId },
-    include: { assignments: { where: { active: true }, select: { id: true, userId: true, assignmentRole: true } } },
+    include: {
+      client: { select: { displayName: true } },
+      assignments: { where: { active: true }, select: { id: true, userId: true, assignmentRole: true } },
+    },
   });
   if (!job) return;
 
@@ -557,7 +582,7 @@ export async function setJobRoleAssignmentAction(formData: FormData) {
           actorId: user.id,
           type: NotificationType.ASSIGNMENT_REMOVED,
           title: "Assignment removed",
-          body: `${user.name ?? "A manager"} removed your ${assignmentRole.toLowerCase()} assignment from ${job.jobIdFromExcel}.`,
+          body: `${user.name ?? "A manager"} removed your ${assignmentRole.toLowerCase()} assignment from ${jobNotificationLabel(job)}.`,
           href: `/jobs/${job.id}`,
           jobId: job.id,
         });
@@ -578,7 +603,7 @@ export async function setJobRoleAssignmentAction(formData: FormData) {
             actorId: user.id,
             type: NotificationType.ASSIGNMENT_REMOVED,
             title: "Assignment removed",
-            body: `${user.name ?? "A manager"} removed your staff assignment from ${job.jobIdFromExcel} due to a supervisor change.`,
+            body: `${user.name ?? "A manager"} removed your staff assignment from ${jobNotificationLabel(job)} due to a supervisor change.`,
             href: `/jobs/${job.id}`,
             jobId: job.id,
           });
@@ -601,7 +626,7 @@ export async function setJobRoleAssignmentAction(formData: FormData) {
         actorId: user.id,
         type: NotificationType.ASSIGNMENT_ADDED,
         title: "Job assigned",
-        body: `${user.name ?? "A manager"} assigned ${job.jobIdFromExcel} to you as ${assignmentRole.toLowerCase()}.`,
+        body: `${user.name ?? "A manager"} assigned ${jobNotificationLabel(job)} to you as ${assignmentRole.toLowerCase()}.`,
         href: `/jobs/${job.id}`,
         jobId: job.id,
       });
@@ -644,6 +669,7 @@ export async function deactivateAssignmentAction(formData: FormData) {
       user: true,
       job: {
         include: {
+          client: { select: { displayName: true } },
           assignments: { where: { active: true }, select: { userId: true } },
         },
       },
@@ -663,7 +689,7 @@ export async function deactivateAssignmentAction(formData: FormData) {
       actorId: user.id,
       type: NotificationType.ASSIGNMENT_REMOVED,
       title: "Assignment removed",
-      body: `${user.name ?? "A manager"} removed your assignment from ${assignment.job.jobIdFromExcel}.`,
+      body: `${user.name ?? "A manager"} removed your assignment from ${jobNotificationLabel(assignment.job)}.`,
       href: `/jobs/${assignment.jobId}`,
       jobId: assignment.jobId,
     });
@@ -713,6 +739,7 @@ export async function bulkAssignJobRolesAction(formData: FormData) {
   const jobs = await prisma.job.findMany({
     where: { id: { in: jobIds } },
     include: {
+      client: { select: { displayName: true } },
       assignments: { where: { active: true }, select: { id: true, userId: true, assignmentRole: true } },
     },
   });
@@ -738,7 +765,7 @@ export async function bulkAssignJobRolesAction(formData: FormData) {
             actorId: user.id,
             type: NotificationType.ASSIGNMENT_ADDED,
             title: "Job assigned",
-            body: `${user.name ?? "An admin"} assigned ${job.jobIdFromExcel} to you as ${role.toLowerCase()}.`,
+            body: `${user.name ?? "An admin"} assigned ${jobNotificationLabel(job)} to you as ${role.toLowerCase()}.`,
             href: `/jobs/${job.id}`,
             jobId: job.id,
           });
@@ -764,7 +791,7 @@ export async function bulkAssignJobRolesAction(formData: FormData) {
           actorId: user.id,
           type: NotificationType.ASSIGNMENT_REMOVED,
           title: "Assignment removed",
-          body: `${user.name ?? "An admin"} removed your assignment from ${job.jobIdFromExcel}.`,
+          body: `${user.name ?? "An admin"} removed your assignment from ${jobNotificationLabel(job)}.`,
           href: `/jobs/${job.id}`,
           jobId: job.id,
         });

@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { ImportStatus } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { requireRole } from "@/lib/rbac";
+import { getSystemSetting, setSystemSetting } from "@/lib/settings";
 import { stageImportBatch } from "@/lib/import/stage";
 import { applyImportBatch } from "@/lib/import/apply";
 import { ImportFileError } from "@/lib/import/parser";
@@ -72,4 +73,12 @@ export async function confirmImportAction(formData: FormData) {
   }
   revalidatePath("/", "layout");
   redirect(`/imports/${batchId}`);
+}
+
+export async function toggleSourceManagerClientClassificationAction() {
+  await requireRole(["ADMIN"]);
+  const current = await getSystemSetting("classifyClientsFromSourceManager");
+  await setSystemSetting("classifyClientsFromSourceManager", current === "false" ? "true" : "false");
+  revalidatePath("/dashboard");
+  revalidatePath("/imports", "layout");
 }

@@ -10,6 +10,7 @@ import { getSystemSetting } from "@/lib/settings";
 import { requireUser } from "@/lib/rbac";
 import { formatDateTime } from "@/lib/utils";
 import { toggleAssignmentAgeAction } from "@/app/(app)/jobs/actions";
+import { toggleSourceManagerClientClassificationAction } from "@/app/(app)/imports/actions";
 
 function importStatusVariant(status: ImportStatus) {
   if (status === "APPLIED") return "success" as const;
@@ -32,13 +33,14 @@ function MetricCard({ label, value, href }: { label: string; value: number; href
 
 export default async function DashboardPage() {
   const user = await requireUser();
-  const [metrics, latestImport, showAssignmentAge] = await Promise.all([
+  const [metrics, latestImport, showAssignmentAge, classifyClientsFromSourceManager] = await Promise.all([
     getDashboardMetrics(user),
     prisma.importBatch.findFirst({
       orderBy: { uploadedAt: "desc" },
       select: { id: true, fileName: true, status: true, uploadedAt: true, xpmDownloadedAt: true },
     }),
     getSystemSetting("showAssignmentAge"),
+    getSystemSetting("classifyClientsFromSourceManager"),
   ]);
 
   return (
@@ -70,7 +72,8 @@ export default async function DashboardPage() {
         </CardContent>
       </Card>
       {user.role === "ADMIN" ? (
-        <div className="mb-4 flex items-center gap-3 rounded-lg border bg-muted/40 px-4 py-3 text-sm">
+        <div className="mb-4 flex flex-col gap-3">
+        <div className="flex items-center gap-3 rounded-lg border bg-muted/40 px-4 py-3 text-sm">
           <span className="font-medium">Assignment age column in job tables:</span>
           <span className={showAssignmentAge === "true" ? "text-green-600 font-semibold" : "text-muted-foreground"}>
             {showAssignmentAge === "true" ? "ON" : "OFF"}
@@ -80,6 +83,19 @@ export default async function DashboardPage() {
               {showAssignmentAge === "true" ? "Turn off" : "Turn on"}
             </Button>
           </form>
+        </div>
+        <div className="flex flex-wrap items-center gap-3 rounded-lg border bg-muted/40 px-4 py-3 text-sm">
+          <span className="font-medium">Classify clients from source manager during imports:</span>
+          <span className={classifyClientsFromSourceManager !== "false" ? "font-semibold text-green-600" : "text-muted-foreground"}>
+            {classifyClientsFromSourceManager !== "false" ? "ON" : "OFF"}
+          </span>
+          <form action={toggleSourceManagerClientClassificationAction}>
+            <Button size="sm" type="submit" variant="outline">
+              {classifyClientsFromSourceManager !== "false" ? "Turn off" : "Turn on"}
+            </Button>
+          </form>
+          <span className="text-xs text-muted-foreground">When off, imports leave existing client categories unchanged.</span>
+        </div>
         </div>
       ) : null}
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
