@@ -22,6 +22,7 @@ type Preset = {
   myJobs?: boolean;
   availableJobs?: boolean;
   queueVacancyFilters?: boolean;
+  queueDepartmentTabs?: boolean;
   stateGroup?: JobStateGroup;
   stateNumbers?: number[];
   tabs?: JobTabsConfig;
@@ -178,6 +179,30 @@ export async function JobListPage({
                 className={buttonVariants({ size: "sm", variant: active ? "default" : "outline" })}
                 href={`${basePath}${next.toString() ? `?${next.toString()}` : ""}`}
                 key={value || "all"}
+              >
+                {label}
+              </Link>
+            );
+          })}
+        </div>
+      ) : null}
+      {effectivePreset.queueDepartmentTabs ? (
+        <div className="mb-4 flex flex-wrap gap-2 rounded-lg border bg-white p-3">
+          {[{ code: "", name: "All Departments" }, ...departments].map((department) => {
+            const next = new URLSearchParams(pageParams);
+            next.delete("page");
+            next.delete("department");
+            if (department.code) next.set("department", department.code);
+            const selectedDepartments = pageParams.getAll("department");
+            const active = department.code
+              ? selectedDepartments.length === 1 && selectedDepartments[0] === department.code
+              : selectedDepartments.length === 0;
+            const label = department.code === "SOFTWARE_BK" ? "Software BK" : department.name;
+            return (
+              <Link
+                className={buttonVariants({ size: "sm", variant: active ? "default" : "outline" })}
+                href={`${basePath}${next.toString() ? `?${next.toString()}` : ""}`}
+                key={department.code || "all-departments"}
               >
                 {label}
               </Link>

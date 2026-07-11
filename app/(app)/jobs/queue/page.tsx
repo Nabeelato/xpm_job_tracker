@@ -12,6 +12,7 @@ export default function AvailableJobsQueuePage({
       preset={{
         availableJobs: true,
         queueVacancyFilters: true,
+        queueDepartmentTabs: true,
         stateSet: "workflow",
         tabs: { departments: true, stateSets: false, states: "all" },
       }}
