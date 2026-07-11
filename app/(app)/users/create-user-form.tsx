@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
@@ -19,13 +20,15 @@ export function CreateUserForm({
   supervisors: Supervisor[];
 }) {
   const [state, formAction, pending] = useActionState<ActionResult | null, FormData>(createUserAction, null);
+  const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
 
   useEffect(() => {
     if (state?.ok) {
       formRef.current?.reset();
+      router.refresh();
     }
-  }, [state]);
+  }, [router, state]);
 
   return (
     <form action={formAction} className="space-y-3" ref={formRef}>

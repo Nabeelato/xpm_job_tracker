@@ -2,6 +2,7 @@
 
 import { useActionState, useEffect, useRef, useState } from "react";
 import { ArrowRightLeft, Trash2 } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
@@ -44,6 +45,7 @@ export function UserRow({
   currentUserId: string;
 }) {
   const [updateState, setUpdateState] = useState<ActionResult | null>(null);
+  const router = useRouter();
   const [updatePending, setUpdatePending] = useState(false);
   const [deleteState, deleteAction, deletePending] = useActionState<ActionResult | null, FormData>(
     deleteUserAction,
@@ -65,6 +67,10 @@ export function UserRow({
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
   const initialDraftRef = useRef(true);
+
+  useEffect(() => {
+    if (deleteState?.ok || transferState?.ok) router.refresh();
+  }, [deleteState, router, transferState]);
 
   useEffect(() => {
     if (initialDraftRef.current) {
@@ -109,6 +115,7 @@ export function UserRow({
       const result = await updateUserAction(null, formData);
       setUpdateState(result);
       setUpdatePending(false);
+      if (result.ok) router.refresh();
       if (result.ok && passwordRef.current) passwordRef.current.value = "";
     };
     saveQueueRef.current = saveQueueRef.current.then(run, run);

@@ -73,6 +73,7 @@ export function JobsTableClient({
   sortBy?: string;
   sortDir?: "asc" | "desc";
 }) {
+  const [displayedJobs, setDisplayedJobs] = useState(jobs);
   const [selected, setSelected] = useState<Map<string, string>>(new Map());
   const [selectionLoaded, setSelectionLoaded] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
@@ -82,6 +83,8 @@ export function JobsTableClient({
   const searchParams = useSearchParams();
   const canSelfSelect = (currentUserRole === "MANAGER" || currentUserRole === "SUPERVISOR") &&
     (isAvailableQueue || isMyJobs);
+
+  useEffect(() => setDisplayedJobs(jobs), [jobs]);
 
   function handleSort(col: string) {
     const params = new URLSearchParams(searchParams.toString());
@@ -120,9 +123,9 @@ export function JobsTableClient({
     sessionStorage.setItem(`job-selection:${currentUserId}`, JSON.stringify([...selected.entries()]));
   }, [currentUserId, selected, selectionLoaded]);
 
-  const allOnPageSelected = jobs.length > 0 && jobs.every((j) => selected.has(j.id));
+  const allOnPageSelected = displayedJobs.length > 0 && displayedJobs.every((j) => selected.has(j.id));
 
-  const visibleIds = useMemo(() => jobs.map((j) => j.id), [jobs]);
+  const visibleIds = useMemo(() => displayedJobs.map((j) => j.id), [displayedJobs]);
 
   function toggleOne(job: JobRow) {
     setSelected((prev) => {
@@ -139,7 +142,7 @@ export function JobsTableClient({
       if (allOnPageSelected) {
         visibleIds.forEach((id) => next.delete(id));
       } else {
-        jobs.forEach((job) => next.set(job.id, job.departmentCode));
+        displayedJobs.forEach((job) => next.set(job.id, job.departmentCode));
       }
       return next;
     });
@@ -161,6 +164,7 @@ export function JobsTableClient({
     formData.set("operation", operation);
     for (const id of selected.keys()) formData.append("jobId", id);
     await bulkOwnJobsAction(formData);
+    setDisplayedJobs((current) => current.filter((job) => !selected.has(job.id)));
     clearSelection();
     router.refresh();
   }
@@ -199,7 +203,7 @@ export function JobsTableClient({
       />
 
       {(() => {
-        const assigningJob = assigningJobId ? jobs.find((j) => j.id === assigningJobId) : null;
+        const assigningJob = assigningJobId ? displayedJobs.find((j) => j.id === assigningJobId) : null;
         if (!assigningJob) return null;
         return (
           <AssignSingleJobModal
@@ -214,6 +218,12 @@ export function JobsTableClient({
             }}
             managerUsers={managerUsers}
             onClose={() => setAssigningJobId(null)}
+            onAssignmentsChange={(assignments) => setDisplayedJobs((current) => current.map((job) =>
+              job.id === assigningJob.id ? { ...job, assignments: assignments.map((assignment) => ({
+                ...assignment,
+                assignedAt: new Date(),
+              })) } : job,
+            ))}
             open={true}
             staffBySupervisorId={staffBySupervisorId}
             supervisorUsers={supervisorUsers}
@@ -250,7 +260,7 @@ export function JobsTableClient({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {jobs.map((job) => {
+            {displayedJobs.map((job) => {
               const roleNames = (role: string) => job.assignments
                 .filter((a) => a.assignmentRole === role)
                 .map((a) => a.user.name ?? a.user.id)
@@ -338,6 +348,7 @@ export function JobsTableClient({
                           const formData = new FormData();
                           formData.set("jobId", job.id);
                           await claimJobAction(formData);
+                          setDisplayedJobs((current) => current.filter((item) => item.id !== job.id));
                           router.refresh();
                           setClaimingJobId(null);
                         }}
@@ -366,6 +377,7 @@ export function JobsTableClient({
                         const formData = new FormData();
                         formData.set("jobId", job.id);
                         await releaseOwnJobAction(formData);
+                        setDisplayedJobs((current) => current.filter((item) => item.id !== job.id));
                         router.refresh();
                       }} size="sm" type="button" variant="destructive">Remove</Button> : null}
                     </TableCell>

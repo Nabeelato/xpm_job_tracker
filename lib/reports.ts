@@ -183,9 +183,23 @@ export function buildJobReportWhere(
   const xpmSubState = param(params, "xpmSubState");
   const myJobs = param(params, "myJobs");
   const availableJobs = param(params, "availableJobs");
+  const queueVacancy = param(params, "queueVacancy");
 
   if (myJobs === "true") and.push({ assignments: { some: { userId: user.id, active: true } } });
   if (availableJobs === "true") and.push(availableJobsWhere(user));
+  if (availableJobs === "true" && user.role === "ADMIN") {
+    if (queueVacancy === "MANAGER" || queueVacancy === "SUPERVISOR" || queueVacancy === "STAFF") {
+      and.push({ assignments: { none: { active: true, assignmentRole: queueVacancy } } });
+    } else if (queueVacancy === "ANY") {
+      and.push({
+        OR: ["MANAGER", "SUPERVISOR", "STAFF"].map((assignmentRole) => ({
+          assignments: { none: { active: true, assignmentRole: assignmentRole as AssignmentRole } },
+        })),
+      });
+    } else if (queueVacancy === "UNASSIGNED") {
+      and.push({ assignments: { none: { active: true } } });
+    }
+  }
 
   if (query) {
     and.push({

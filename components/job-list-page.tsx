@@ -21,6 +21,7 @@ type Preset = {
   missing?: boolean;
   myJobs?: boolean;
   availableJobs?: boolean;
+  queueVacancyFilters?: boolean;
   stateGroup?: JobStateGroup;
   stateNumbers?: number[];
   tabs?: JobTabsConfig;
@@ -157,6 +158,33 @@ export async function JobListPage({
   return (
     <>
       <PageHeader description={effectiveDescription} title={effectiveTitle} />
+      {effectivePreset.queueVacancyFilters && user.role === "ADMIN" ? (
+        <div className="mb-4 flex flex-wrap gap-2 rounded-lg border bg-white p-3">
+          {[
+            ["", "All workflow jobs"],
+            ["ANY", "Missing any role"],
+            ["MANAGER", "No manager"],
+            ["SUPERVISOR", "No supervisor"],
+            ["STAFF", "No staff"],
+            ["UNASSIGNED", "Completely unassigned"],
+          ].map(([value, label]) => {
+            const next = new URLSearchParams(pageParams);
+            next.delete("page");
+            if (value) next.set("queueVacancy", value);
+            else next.delete("queueVacancy");
+            const active = (searchParam(rawParams, "queueVacancy") ?? "") === value;
+            return (
+              <Link
+                className={buttonVariants({ size: "sm", variant: active ? "default" : "outline" })}
+                href={`${basePath}${next.toString() ? `?${next.toString()}` : ""}`}
+                key={value || "all"}
+              >
+                {label}
+              </Link>
+            );
+          })}
+        </div>
+      ) : null}
       <JobFilters
         basePath={basePath}
         config={effectivePreset.tabs}

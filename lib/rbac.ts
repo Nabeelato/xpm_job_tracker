@@ -79,8 +79,14 @@ export function assignmentRoleForUser(role: UserRole): AssignmentRole {
 
 export function availableJobsWhere(user: AppSessionUser): Prisma.JobWhereInput {
   if (!user.departmentId && user.role !== "ADMIN") return { id: "__none__" };
+  if (user.role === "ADMIN") {
+    return {
+      jobStateNumber: { in: [3, 4, 5, 6] },
+      archived: false,
+    };
+  }
   return {
-    ...(user.role === "ADMIN" ? {} : { finalDepartmentId: user.departmentId! }),
+    finalDepartmentId: user.departmentId!,
     jobStateNumber: { in: [3, 4, 5, 6] },
     archived: false,
     assignments: {

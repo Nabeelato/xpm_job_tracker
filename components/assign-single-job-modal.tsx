@@ -24,6 +24,7 @@ function workloadLabel(userId: string, workload: Record<string, Record<string, n
 export function AssignSingleJobModal({
   open,
   onClose,
+  onAssignmentsChange,
   job,
   currentUserId,
   currentUserRole,
@@ -34,6 +35,7 @@ export function AssignSingleJobModal({
 }: {
   open: boolean;
   onClose: () => void;
+  onAssignmentsChange?: (assignments: Assignment[]) => void;
   job: {
     id: string;
     jobIdFromExcel: string;
@@ -76,9 +78,11 @@ export function AssignSingleJobModal({
   async function toggle(role: AssignmentRole, target: RoleUser, checked: boolean) {
     const key = `${role}:${target.id}`;
     setSavingKey(key);
-    setAssignments((current) => checked
-      ? [...current, { id: `pending-${key}`, assignmentRole: role, user: target }]
-      : current.filter((assignment) => !(assignment.assignmentRole === role && assignment.user.id === target.id)));
+    const nextAssignments = checked
+      ? [...assignments, { id: `pending-${key}`, assignmentRole: role, user: target }]
+      : assignments.filter((assignment) => !(assignment.assignmentRole === role && assignment.user.id === target.id));
+    setAssignments(nextAssignments);
+    onAssignmentsChange?.(nextAssignments);
 
     const formData = new FormData();
     formData.set("jobId", job.id);

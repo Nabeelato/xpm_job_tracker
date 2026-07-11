@@ -8,9 +8,10 @@ export default function AvailableJobsQueuePage({
   return (
     <JobListPage
       basePath="/jobs/queue"
-      description="Workflow 03 to 06 jobs with no assignee in your role. A manager, supervisor, or staff claim removes the job from their role's queue."
+      description="Workflow 03 to 06 jobs. Admins see every department; other users see same-department jobs with no assignee in their role."
       preset={{
         availableJobs: true,
+        queueVacancyFilters: true,
         stateSet: "workflow",
         tabs: { departments: true, stateSets: false, states: "all" },
       }}
