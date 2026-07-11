@@ -106,7 +106,9 @@ export function JobsTableClient({
   }
 
   useEffect(() => {
-    const id = setInterval(() => router.refresh(), 30_000);
+    const id = setInterval(() => {
+      if (document.visibilityState === "visible") router.refresh();
+    }, 60_000);
     return () => clearInterval(id);
   }, [router]);
 

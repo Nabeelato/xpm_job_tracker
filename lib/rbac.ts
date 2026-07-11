@@ -78,7 +78,6 @@ export function assignmentRoleForUser(role: UserRole): AssignmentRole {
 }
 
 export function availableJobsWhere(user: AppSessionUser): Prisma.JobWhereInput {
-  if (!user.departmentId && user.role !== "ADMIN") return { id: "__none__" };
   if (user.role === "ADMIN") {
     return {
       jobStateNumber: { in: [3, 4, 5, 6] },
@@ -86,7 +85,6 @@ export function availableJobsWhere(user: AppSessionUser): Prisma.JobWhereInput {
     };
   }
   return {
-    finalDepartmentId: user.departmentId!,
     jobStateNumber: { in: [3, 4, 5, 6] },
     archived: false,
     assignments: {
@@ -118,8 +116,7 @@ export function assertCanViewJob(user: AppSessionUser, job: {
   if (user.role === "ADMIN" || user.departmentCode === "QC") return true;
   if (job.assignments.some((assignment) => assignment.userId === user.id)) return true;
   if (
-    user.departmentId && job.finalDepartmentId === user.departmentId && !job.archived &&
-    job.jobStateNumber && [3, 4, 5, 6].includes(job.jobStateNumber) &&
+    !job.archived && job.jobStateNumber && [3, 4, 5, 6].includes(job.jobStateNumber) &&
     !job.assignments.some((assignment) => assignment.assignmentRole === assignmentRoleForUser(user.role))
   ) return true;
   redirect("/jobs/my");

@@ -23,6 +23,12 @@ import {
   visibleJobsWhere,
 } from "@/lib/rbac";
 
+function revalidateAllJobViews() {
+  revalidatePath("/jobs", "layout");
+  revalidatePath("/dashboard");
+  revalidatePath("/reports");
+}
+
 async function getVisibleJobOrRedirect(jobId: string) {
   const user = await requireUser();
   const job = await prisma.job.findFirst({
@@ -102,6 +108,7 @@ export async function updateInternalStatusAction(formData: FormData) {
   });
   revalidatePath(`/jobs/${job.id}`);
   revalidatePath("/jobs");
+  revalidateAllJobViews();
 }
 
 export async function updateDepartmentAction(formData: FormData) {
@@ -131,6 +138,7 @@ export async function updateDepartmentAction(formData: FormData) {
   });
   revalidatePath(`/jobs/${job.id}`);
   revalidatePath("/jobs");
+  revalidateAllJobViews();
 }
 
 export async function addCommentAction(formData: FormData) {
@@ -194,6 +202,7 @@ export async function archiveJobAction(formData: FormData) {
   });
   revalidatePath(`/jobs/${job.id}`);
   revalidatePath("/jobs");
+  revalidateAllJobViews();
 }
 
 export async function assignJobAction(formData: FormData) {
@@ -263,12 +272,13 @@ export async function assignJobAction(formData: FormData) {
   revalidatePath(`/jobs/${jobId}`);
   revalidatePath("/assignments");
   revalidatePath("/jobs");
+  revalidateAllJobViews();
 }
 
 export async function claimJobAction(formData: FormData) {
   const user = await requireUser();
   const jobId = String(formData.get("jobId") ?? "");
-  if (!jobId || !user.departmentId) return;
+  if (!jobId) return;
 
   const assignmentRole = assignmentRoleForUser(user.role);
 
@@ -276,7 +286,6 @@ export async function claimJobAction(formData: FormData) {
     const job = await tx.job.findFirst({
       where: {
         id: jobId,
-        finalDepartmentId: user.departmentId!,
         jobStateNumber: { in: [3, 4, 5, 6] },
         archived: false,
         assignments: { none: { active: true, assignmentRole } },
@@ -324,6 +333,7 @@ export async function claimJobAction(formData: FormData) {
   revalidatePath(`/jobs/${jobId}`);
   revalidatePath("/jobs");
   revalidatePath("/jobs/my");
+  revalidateAllJobViews();
 }
 
 export async function releaseOwnJobAction(formData: FormData) {
@@ -370,6 +380,7 @@ export async function releaseOwnJobAction(formData: FormData) {
   revalidatePath("/jobs");
   revalidatePath("/jobs/my");
   revalidatePath("/jobs/queue");
+  revalidateAllJobViews();
 }
 
 export async function bulkOwnJobsAction(formData: FormData) {
@@ -388,6 +399,7 @@ export async function bulkOwnJobsAction(formData: FormData) {
   revalidatePath("/jobs");
   revalidatePath("/jobs/my");
   revalidatePath("/jobs/queue");
+  revalidateAllJobViews();
 }
 
 export async function toggleJobAssignmentAction(formData: FormData) {
@@ -478,6 +490,7 @@ export async function toggleJobAssignmentAction(formData: FormData) {
   revalidatePath(`/jobs/${jobId}`);
   revalidatePath("/jobs");
   revalidatePath("/assignments");
+  revalidateAllJobViews();
 }
 
 export async function setJobRoleAssignmentAction(formData: FormData) {
@@ -615,6 +628,7 @@ export async function setJobRoleAssignmentAction(formData: FormData) {
   revalidatePath(`/jobs/${jobId}`);
   revalidatePath("/jobs");
   revalidatePath("/assignments");
+  revalidateAllJobViews();
 }
 
 export async function deactivateAssignmentAction(formData: FormData) {
@@ -663,6 +677,7 @@ export async function deactivateAssignmentAction(formData: FormData) {
   });
   revalidatePath(`/jobs/${assignment.jobId}`);
   revalidatePath("/assignments");
+  revalidateAllJobViews();
 }
 
 // Bulk-assign Manager and/or Supervisor across many selected jobs at once.
@@ -764,6 +779,7 @@ export async function bulkAssignJobRolesAction(formData: FormData) {
   });
 
   revalidatePath("/jobs");
+  revalidateAllJobViews();
 }
 
 export async function toggleAssignmentAgeAction() {

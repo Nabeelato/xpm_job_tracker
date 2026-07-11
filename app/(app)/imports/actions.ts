@@ -70,6 +70,6 @@ export async function confirmImportAction(formData: FormData) {
     }
     throw error;
   }
-  revalidatePath("/");
+  revalidatePath("/", "layout");
   redirect(`/imports/${batchId}`);
 }

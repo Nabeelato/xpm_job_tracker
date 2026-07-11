@@ -29,6 +29,7 @@ export async function updateClientCategoryAction(formData: FormData) {
 
   revalidatePath(`/clients/${clientId}`);
   revalidatePath("/clients");
+  revalidatePath("/jobs", "layout");
 }
 
 export async function updateClientBookkeepingAction(formData: FormData) {
@@ -64,5 +65,6 @@ export async function updateClientBookkeepingAction(formData: FormData) {
 
   revalidatePath(`/clients/${clientId}`);
   revalidatePath("/jobs");
+  revalidatePath("/jobs", "layout");
   if (fromJobId) revalidatePath(`/jobs/${fromJobId}`);
 }
