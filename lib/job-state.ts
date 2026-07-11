@@ -31,6 +31,27 @@ export function xpmSubStateWhere(sub: XpmSubState): Prisma.JobWhereInput {
   return {};
 }
 
+export function workflowStateWhere(): Prisma.JobWhereInput {
+  return {
+    jobStateNumber: { in: [3, 4, 5, 6] },
+    NOT: [
+      { xpmState: { contains: "3.1" } },
+      { xpmState: { contains: "3.2" } },
+    ],
+  };
+}
+
+export function exactStateWhere(number: number): Prisma.JobWhereInput {
+  if (number !== 3) return { jobStateNumber: number };
+  return {
+    jobStateNumber: 3,
+    NOT: [
+      { xpmState: { contains: "3.1" } },
+      { xpmState: { contains: "3.2" } },
+    ],
+  };
+}
+
 export function stateGroupWhere(group: JobStateGroup): Prisma.JobWhereInput {
   if (group === "MAIN") return { jobStateNumber: { in: [2, 3, 4, 5, 6] } };
   if (group === "COMPLETED") return { jobStateNumber: 11 };

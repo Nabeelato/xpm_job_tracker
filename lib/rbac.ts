@@ -4,6 +4,7 @@ import { cache } from "react";
 import { AssignmentRole, type Prisma, type UserRole } from "@prisma/client";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { workflowStateWhere } from "@/lib/job-state";
 
 export type AppSessionUser = {
   id: string;
@@ -80,12 +81,12 @@ export function assignmentRoleForUser(role: UserRole): AssignmentRole {
 export function availableJobsWhere(user: AppSessionUser): Prisma.JobWhereInput {
   if (user.role === "ADMIN") {
     return {
-      jobStateNumber: { in: [3, 4, 5, 6] },
+      ...workflowStateWhere(),
       archived: false,
     };
   }
   return {
-    jobStateNumber: { in: [3, 4, 5, 6] },
+    ...workflowStateWhere(),
     archived: false,
     assignments: {
       none: { active: true, assignmentRole: assignmentRoleForUser(user.role) },

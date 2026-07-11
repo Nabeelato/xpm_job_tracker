@@ -120,7 +120,13 @@ export async function JobListPage({
     prisma.jobAssignment.findMany({
       where: {
         active: true,
-        job: { jobStateNumber: { in: [3, 4, 5, 6] } },
+        job: {
+          jobStateNumber: { in: [3, 4, 5, 6] },
+          NOT: [
+            { xpmState: { contains: "3.1" } },
+            { xpmState: { contains: "3.2" } },
+          ],
+        },
       },
       select: {
         userId: true,

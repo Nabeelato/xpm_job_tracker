@@ -1,7 +1,7 @@
 import ExcelJS from "exceljs";
 import { NextResponse } from "next/server";
 import type { AssignmentRole, Prisma, UserRole } from "@prisma/client";
-import { stateGroupWhere, xpmSubStateWhere, type JobStateGroup, type XpmSubState } from "@/lib/job-state";
+import { exactStateWhere, stateGroupWhere, workflowStateWhere, xpmSubStateWhere, type JobStateGroup, type XpmSubState } from "@/lib/job-state";
 import { formatDateTime, titleCaseEnum } from "@/lib/utils";
 import { availableJobsWhere, visibleJobsWhere, type AppSessionUser } from "@/lib/rbac";
 
@@ -94,7 +94,13 @@ function stateFilterWhere(value: string | undefined): Prisma.JobWhereInput | nul
   if (!value) return undefined;
   if (value === "all") return null;
   if (value === "main") return { jobStateNumber: { in: [2, 3, 4, 5, 6] } };
-  if (value === "workflow") return { jobStateNumber: { in: [3, 4, 5, 6] } };
+  if (value === "workflow") return workflowStateWhere();
+  if (value === "state_3_1") return xpmSubStateWhere("job_on_hold");
+  if (value === "state_3_2") return xpmSubStateWhere("ifza_check");
+  if (value?.startsWith("state_")) {
+    const number = Number.parseInt(value.slice("state_".length), 10);
+    if (number >= 1 && number <= 12) return exactStateWhere(number);
+  }
   if (value === "other") return stateGroupWhere("OTHER");
   if (value === "completed") return stateGroupWhere("COMPLETED");
   if (value === "cancelled") return stateGroupWhere("CANCELLED");
@@ -244,7 +250,7 @@ export function buildJobReportWhere(
   } else if (stateSet === "main") {
     and.push({ jobStateNumber: { in: [2, 3, 4, 5, 6] } });
   } else if (stateSet === "workflow") {
-    and.push({ jobStateNumber: { in: [3, 4, 5, 6] } });
+    and.push(workflowStateWhere());
   } else if (stateSet === "other") {
     and.push(stateGroupWhere("OTHER"));
   }

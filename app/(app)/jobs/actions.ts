@@ -14,6 +14,7 @@ import {
 } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { createNotification } from "@/lib/notifications";
+import { workflowStateWhere } from "@/lib/job-state";
 import {
   assertCanViewJob,
   canArchiveJobs,
@@ -293,7 +294,7 @@ export async function claimJobAction(formData: FormData) {
     const job = await tx.job.findFirst({
       where: {
         id: jobId,
-        jobStateNumber: { in: [3, 4, 5, 6] },
+        ...workflowStateWhere(),
         archived: false,
         assignments: { none: { active: true, assignmentRole } },
       },

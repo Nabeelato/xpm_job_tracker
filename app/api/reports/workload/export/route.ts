@@ -73,6 +73,7 @@ export async function GET(req: NextRequest) {
         select: {
           id: true,
           jobStateNumber: true,
+          xpmState: true,
           missingFromLatestImport: true,
           finalDepartment: { select: { code: true, name: true } },
         },
@@ -120,7 +121,9 @@ export async function GET(req: NextRequest) {
     };
 
     existing.uniqueJobs.add(assignment.job.id);
-    if ([3, 4, 5, 6].includes(assignment.job.jobStateNumber ?? 0)) existing.workflowJobs.add(assignment.job.id);
+    const isWorkflowState = [3, 4, 5, 6].includes(assignment.job.jobStateNumber ?? 0) &&
+      !assignment.job.xpmState?.includes("3.1") && !assignment.job.xpmState?.includes("3.2");
+    if (isWorkflowState) existing.workflowJobs.add(assignment.job.id);
     if (assignment.job.jobStateNumber === 11) existing.completedJobs.add(assignment.job.id);
     if (assignment.job.jobStateNumber === 12) existing.cancelledJobs.add(assignment.job.id);
     if (assignment.job.missingFromLatestImport) existing.missingJobs.add(assignment.job.id);

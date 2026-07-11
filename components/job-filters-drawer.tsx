@@ -8,7 +8,7 @@ import { MultiSelectFilter, type MultiSelectOption } from "@/components/multi-se
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
-import { clientCategoryLabels } from "@/lib/constants";
+import { clientCategoryLabels, jobStateOptions } from "@/lib/constants";
 import { cn, titleCaseEnum } from "@/lib/utils";
 
 export type JobTabsConfig = {
@@ -18,7 +18,11 @@ export type JobTabsConfig = {
   states?: "all" | readonly number[];
 };
 
-type StateFilterValue = "main" | "workflow" | "other" | "completed" | "cancelled";
+type StateFilterValue =
+  | "main" | "workflow" | "other" | "completed" | "cancelled"
+  | "state_1" | "state_2" | "state_3" | "state_3_1" | "state_3_2"
+  | "state_4" | "state_5" | "state_6" | "state_7" | "state_8"
+  | "state_9" | "state_10" | "state_11" | "state_12";
 
 type FilterSection = "staff" | "manager" | "supervisor" | "department" | "state" | "client" | "more";
 
@@ -45,10 +49,17 @@ const archivedLabels = new Map([
 
 const stateFilterOptions = [
   { value: "main", label: "Main 02-06", meta: "States 02, 03, 04, 05, 06" },
-  { value: "workflow", label: "Workflow 03-06", meta: "States 03, 04, 05, 06" },
+  { value: "workflow", label: "Workflow 03-06", meta: "Base states 03, 04, 05, 06; excludes 3.1 and 3.2" },
   { value: "other", label: "Other states", meta: "States 01, 07, 08, 09, 10" },
   { value: "completed", label: "Completed", meta: "State 11" },
   { value: "cancelled", label: "Cancelled", meta: "State 12" },
+  ...jobStateOptions.map((state) => ({
+    value: `state_${state.number}` as StateFilterValue,
+    label: state.number === 3 ? "03. Info sent to Lahore / Job started (base 03 only)" : state.label,
+    meta: state.number === 3 ? "Excludes 3.1 and 3.2" : `State ${state.code}`,
+  })),
+  { value: "state_3_1", label: "3.1 Job On Hold", meta: "Exact sub-state 3.1" },
+  { value: "state_3_2", label: "3.2 IFZA Check", meta: "Exact sub-state 3.2" },
 ] as const satisfies readonly MultiSelectOption[];
 
 const stateFilterLabels = new Map<StateFilterValue, string>(

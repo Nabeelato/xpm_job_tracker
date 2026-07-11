@@ -176,11 +176,11 @@ export async function getDashboardMetrics(user: AppSessionUser): Promise<Dashboa
       (SELECT COUNT(*)::int FROM client_counts) AS "totalClients",
       (SELECT COUNT(*)::int FROM client_counts WHERE job_count > 1) AS "clientsWithMultipleJobs",
       (COUNT(*) FILTER (WHERE job_state_number IN (2, 3, 4, 5, 6)))::int AS "mainJobs",
-      (COUNT(*) FILTER (WHERE department_code = 'VAT' AND job_state_number IN (3, 4, 5, 6)))::int AS "vatJobs",
-      (COUNT(*) FILTER (WHERE department_code = 'SOFTWARE_BK' AND job_state_number IN (3, 4, 5, 6)))::int AS "softwareBkJobs",
-      (COUNT(*) FILTER (WHERE department_code = 'BK' AND job_state_number IN (3, 4, 5, 6)))::int AS "bkJobs",
-      (COUNT(*) FILTER (WHERE department_code = 'AFS' AND job_state_number IN (3, 4, 5, 6)))::int AS "afsJobs",
-      (COUNT(*) FILTER (WHERE department_code = 'UNCLASSIFIED' AND job_state_number IN (3, 4, 5, 6)))::int AS "unclassifiedJobs",
+      (COUNT(*) FILTER (WHERE department_code = 'VAT' AND job_state_number IN (3, 4, 5, 6) AND xpm_state NOT LIKE '%3.1%' AND xpm_state NOT LIKE '%3.2%'))::int AS "vatJobs",
+      (COUNT(*) FILTER (WHERE department_code = 'SOFTWARE_BK' AND job_state_number IN (3, 4, 5, 6) AND xpm_state NOT LIKE '%3.1%' AND xpm_state NOT LIKE '%3.2%'))::int AS "softwareBkJobs",
+      (COUNT(*) FILTER (WHERE department_code = 'BK' AND job_state_number IN (3, 4, 5, 6) AND xpm_state NOT LIKE '%3.1%' AND xpm_state NOT LIKE '%3.2%'))::int AS "bkJobs",
+      (COUNT(*) FILTER (WHERE department_code = 'AFS' AND job_state_number IN (3, 4, 5, 6) AND xpm_state NOT LIKE '%3.1%' AND xpm_state NOT LIKE '%3.2%'))::int AS "afsJobs",
+      (COUNT(*) FILTER (WHERE department_code = 'UNCLASSIFIED' AND job_state_number IN (3, 4, 5, 6) AND xpm_state NOT LIKE '%3.1%' AND xpm_state NOT LIKE '%3.2%'))::int AS "unclassifiedJobs",
       (COUNT(*) FILTER (
         WHERE NOT EXISTS (
           SELECT 1
@@ -279,12 +279,12 @@ export async function getClientSummaries({
         (COUNT(*) FILTER (WHERE archived = FALSE))::int AS "activeJobs",
         (COUNT(*) FILTER (WHERE internal_status = 'COMPLETED'))::int AS "completedJobs",
         (COUNT(*) FILTER (WHERE missing_from_latest_import = TRUE))::int AS "missingJobs",
-        (COUNT(*) FILTER (WHERE department_code = 'VAT' AND job_state_number IN (3, 4, 5, 6)))::int AS "vatJobs",
-        (COUNT(*) FILTER (WHERE department_code = 'SOFTWARE_BK' AND job_state_number IN (3, 4, 5, 6)))::int AS "softwareBkJobs",
-        (COUNT(*) FILTER (WHERE department_code = 'BK' AND job_state_number IN (3, 4, 5, 6)))::int AS "bkJobs",
-        (COUNT(*) FILTER (WHERE department_code = 'AFS' AND job_state_number IN (3, 4, 5, 6)))::int AS "afsJobs",
-        (COUNT(*) FILTER (WHERE department_code = 'QC' AND job_state_number IN (3, 4, 5, 6)))::int AS "qcJobs",
-        (COUNT(*) FILTER (WHERE department_code = 'UNCLASSIFIED' AND job_state_number IN (3, 4, 5, 6)))::int AS "unclassifiedJobs"
+        (COUNT(*) FILTER (WHERE department_code = 'VAT' AND job_state_number IN (3, 4, 5, 6) AND xpm_state NOT LIKE '%3.1%' AND xpm_state NOT LIKE '%3.2%'))::int AS "vatJobs",
+        (COUNT(*) FILTER (WHERE department_code = 'SOFTWARE_BK' AND job_state_number IN (3, 4, 5, 6) AND xpm_state NOT LIKE '%3.1%' AND xpm_state NOT LIKE '%3.2%'))::int AS "softwareBkJobs",
+        (COUNT(*) FILTER (WHERE department_code = 'BK' AND job_state_number IN (3, 4, 5, 6) AND xpm_state NOT LIKE '%3.1%' AND xpm_state NOT LIKE '%3.2%'))::int AS "bkJobs",
+        (COUNT(*) FILTER (WHERE department_code = 'AFS' AND job_state_number IN (3, 4, 5, 6) AND xpm_state NOT LIKE '%3.1%' AND xpm_state NOT LIKE '%3.2%'))::int AS "afsJobs",
+        (COUNT(*) FILTER (WHERE department_code = 'QC' AND job_state_number IN (3, 4, 5, 6) AND xpm_state NOT LIKE '%3.1%' AND xpm_state NOT LIKE '%3.2%'))::int AS "qcJobs",
+        (COUNT(*) FILTER (WHERE department_code = 'UNCLASSIFIED' AND job_state_number IN (3, 4, 5, 6) AND xpm_state NOT LIKE '%3.1%' AND xpm_state NOT LIKE '%3.2%'))::int AS "unclassifiedJobs"
       FROM visible_client_jobs
       GROUP BY id, display_name, category, bookkeeping_software, bookkeeping_by
     ),
