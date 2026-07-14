@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import bcrypt from "bcryptjs";
-import { AssignmentRole, ChangeSource, InternalStatus, UserRole } from "@prisma/client";
+import { AssignmentRole, AssignmentSource, ChangeSource, InternalStatus, UserRole } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { requireRole } from "@/lib/rbac";
 
@@ -222,7 +222,7 @@ export async function transferAssignmentsAction(
   _prev: ActionResult | null,
   formData: FormData,
 ): Promise<ActionResult> {
-  await requireRole(["ADMIN"]);
+  const admin = await requireRole(["ADMIN"]);
   const fromUserId = String(formData.get("fromUserId") ?? "");
   const toUserId = String(formData.get("toUserId") ?? "");
   const deactivate = formData.get("deactivate") === "on";
@@ -249,6 +249,7 @@ export async function transferAssignmentsAction(
   let merged = 0;
 
   await prisma.$transaction(async (tx) => {
+    const transferredAt = new Date();
     const fromActive = await tx.jobAssignment.findMany({
       where: { userId: fromUserId, active: true },
       select: { id: true, jobId: true, assignmentRole: true },
@@ -260,25 +261,32 @@ export async function transferAssignmentsAction(
     const overlap = new Set(toActive.map((a) => `${a.jobId}|${a.assignmentRole}`));
 
     const deactivateIds: string[] = [];
-    const transferIds: string[] = [];
+    const transferAssignments: typeof fromActive = [];
     for (const a of fromActive) {
       if (overlap.has(`${a.jobId}|${a.assignmentRole}`)) deactivateIds.push(a.id);
-      else transferIds.push(a.id);
+      else transferAssignments.push(a);
     }
 
-    if (deactivateIds.length) {
+    const allSourceAssignmentIds = [...deactivateIds, ...transferAssignments.map((assignment) => assignment.id)];
+    if (allSourceAssignmentIds.length) {
       await tx.jobAssignment.updateMany({
-        where: { id: { in: deactivateIds } },
+        where: { id: { in: allSourceAssignmentIds } },
         data: { active: false },
       });
       merged = deactivateIds.length;
     }
-    if (transferIds.length) {
-      await tx.jobAssignment.updateMany({
-        where: { id: { in: transferIds } },
-        data: { userId: toUserId },
+    if (transferAssignments.length) {
+      await tx.jobAssignment.createMany({
+        data: transferAssignments.map((assignment) => ({
+          jobId: assignment.jobId,
+          userId: toUserId,
+          assignmentRole: assignment.assignmentRole,
+          assignmentSource: AssignmentSource.MANUAL,
+          assignedById: admin.id,
+          assignedAt: transferredAt,
+        })),
       });
-      transferred = transferIds.length;
+      transferred = transferAssignments.length;
     }
 
     if (deactivate) {
@@ -287,6 +295,9 @@ export async function transferAssignmentsAction(
   });
 
   revalidatePath("/users");
+  revalidatePath("/jobs", "layout");
+  revalidatePath("/dashboard");
+  revalidatePath("/reports");
 
   const parts: string[] = [];
   if (transferred) parts.push(`${transferred} transferred`);

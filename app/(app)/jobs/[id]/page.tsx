@@ -9,6 +9,7 @@ import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { JobComments } from "@/components/job-comments";
 import { assignmentRoles, bookkeepingByLabels, bookkeepingSoftwareLabels, internalStatuses, userRoles } from "@/lib/constants";
+import { canAssignUserToRole, canManageJobAssignmentRole } from "@/lib/assignment-permissions";
 import { prisma } from "@/lib/db";
 import { assertCanViewJob, canArchiveJobs, canAssignJobs, requireUser, visibleJobsWhere } from "@/lib/rbac";
 import { formatDateTime, titleCaseEnum } from "@/lib/utils";
@@ -48,7 +49,14 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
       autoDetectedDepartment: { select: { code: true } },
       assignments: {
         where: { active: true },
-        select: { id: true, userId: true, assignmentRole: true, assignmentSource: true, user: { select: { name: true } } },
+        select: {
+          id: true,
+          userId: true,
+          assignmentRole: true,
+          assignmentSource: true,
+          assignedAt: true,
+          user: { select: { id: true, name: true, role: true, departmentId: true, supervisorId: true } },
+        },
         orderBy: { assignedAt: "desc" },
       },
       comments: {
@@ -90,9 +98,16 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
           ? { active: true, departmentId: user.departmentId ?? "__none__", role: { in: userRoles } }
           : { active: true },
       orderBy: { name: "asc" },
-      select: { id: true, name: true, role: true },
+      select: { id: true, name: true, role: true, departmentId: true, supervisorId: true },
     }),
   ]);
+  const activeAssignmentRefs = job.assignments.map((assignment) => ({
+    userId: assignment.userId,
+    assignmentRole: assignment.assignmentRole,
+  }));
+  const canManageAssignments = user.role === "ADMIN" || (
+    user.role === "MANAGER" && activeAssignmentRefs.some((assignment) => assignment.userId === user.id)
+  );
   return (
     <>
       <PageHeader title={job.jobIdFromExcel} description={job.jobName} />
@@ -218,34 +233,37 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
             </CardContent>
           </Card>
 
-          {canAssignJobs(user.role) ? (
+          {canManageAssignments ? (
             <Card>
               <CardHeader>
                 <CardTitle>Assign Users</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <form action={assignJobAction} className="space-y-3">
-                  <input name="jobId" type="hidden" value={job.id} />
-                  <Select name="userId" required>
-                    <option value="">Select user</option>
-                    {users.map((candidate) => (
-                      <option key={candidate.id} value={candidate.id}>
-                        {candidate.name} ({candidate.role})
-                      </option>
-                    ))}
-                  </Select>
-                  <Select name="assignmentRole" required>
-                    {assignmentRoles.map((role) => (
-                      <option key={role} value={role}>
-                        {titleCaseEnum(role)}
-                      </option>
-                    ))}
-                  </Select>
-                  <Button type="submit">
-                    <UserPlus className="h-4 w-4" />
-                    Assign
-                  </Button>
-                </form>
+                <div className="space-y-3">
+                  {assignmentRoles.map((assignmentRole) => {
+                    const candidates = users.filter((candidate) =>
+                      canAssignUserToRole(user, candidate, assignmentRole),
+                    );
+                    return (
+                      <form action={assignJobAction} className="grid gap-2 sm:grid-cols-[1fr_auto]" key={assignmentRole}>
+                        <input name="jobId" type="hidden" value={job.id} />
+                        <input name="assignmentRole" type="hidden" value={assignmentRole} />
+                        <Select aria-label={`Select ${titleCaseEnum(assignmentRole)}`} name="userId" required>
+                          <option value="">Select {titleCaseEnum(assignmentRole).toLowerCase()}</option>
+                          {candidates.map((candidate) => (
+                            <option key={candidate.id} value={candidate.id}>
+                              {candidate.name} ({candidate.role})
+                            </option>
+                          ))}
+                        </Select>
+                        <Button type="submit">
+                          <UserPlus className="h-4 w-4" />
+                          Add {titleCaseEnum(assignmentRole)}
+                        </Button>
+                      </form>
+                    );
+                  })}
+                </div>
                 <div className="space-y-2">
                   {job.assignments.length ? (
                     job.assignments.map((assignment) => (
@@ -255,13 +273,24 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
                           <div className="text-xs text-muted-foreground">
                             {titleCaseEnum(assignment.assignmentRole)} | {titleCaseEnum(assignment.assignmentSource)}
                           </div>
+                          <div className="text-xs text-muted-foreground">
+                            Assigned {formatDateTime(assignment.assignedAt)}
+                          </div>
                         </div>
-                        <form action={deactivateAssignmentAction}>
-                          <input name="assignmentId" type="hidden" value={assignment.id} />
-                          <Button size="sm" type="submit" variant="outline">
-                            Remove
-                          </Button>
-                        </form>
+                        {canManageJobAssignmentRole({
+                          actor: user,
+                          assignee: assignment.user,
+                          assignmentRole: assignment.assignmentRole,
+                          activeAssignments: activeAssignmentRefs,
+                          operation: "REMOVE",
+                        }) ? (
+                          <form action={deactivateAssignmentAction}>
+                            <input name="assignmentId" type="hidden" value={assignment.id} />
+                            <Button size="sm" type="submit" variant="outline">
+                              Remove
+                            </Button>
+                          </form>
+                        ) : <span className="text-xs text-muted-foreground">Admin only</span>}
                       </div>
                     ))
                   ) : (

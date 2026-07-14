@@ -258,6 +258,7 @@ export async function getClientSummaries({
         j.internal_status::text AS internal_status,
         j.missing_from_latest_import,
         j.job_state_number,
+        j.xpm_state,
         j.state_entered_at,
         d.code AS department_code
       FROM clients c

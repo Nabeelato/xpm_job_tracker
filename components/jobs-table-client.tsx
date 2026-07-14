@@ -12,7 +12,7 @@ import { AssignSingleJobModal } from "@/components/assign-single-job-modal";
 import { DepartmentBadge } from "@/components/department-badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { cn } from "@/lib/utils";
+import { cn, formatDateTime, titleCaseEnum } from "@/lib/utils";
 import { bulkOwnJobsAction, claimJobAction, releaseOwnJobAction } from "@/app/(app)/jobs/actions";
 
 type RoleUser = { id: string; name: string | null };
@@ -36,10 +36,8 @@ export type JobRow = {
   departmentCode: string;
   xpmState: string | null;
   jobStateNumber: number | null;
+  stateEnteredAt: Date | null;
   assignments: Assignment[];
-  staffUsers: { id: string; name: string | null }[];
-  supervisorMissing: boolean;
-  earliestAssignedAt: Date | null;
 };
 
 export function JobsTableClient({
@@ -52,8 +50,10 @@ export function JobsTableClient({
   isMyJobs = false,
   managerUsers,
   supervisorUsers,
+  crossRoleStaffUsers,
   staffBySupervisorId,
   showAssignmentAge = false,
+  showStateAge = false,
   userWorkload = {},
   sortBy = "",
   sortDir = "asc",
@@ -67,8 +67,10 @@ export function JobsTableClient({
   isMyJobs?: boolean;
   managerUsers: RoleUser[];
   supervisorUsers: RoleUser[];
+  crossRoleStaffUsers: RoleUser[];
   staffBySupervisorId: Record<string, RoleUser[]>;
   showAssignmentAge?: boolean;
+  showStateAge?: boolean;
   userWorkload?: Record<string, Record<string, number>>;
   sortBy?: string;
   sortDir?: "asc" | "desc";
@@ -105,12 +107,13 @@ export function JobsTableClient({
       : <ArrowDown className="ml-1 inline h-3.5 w-3.5" />;
   }
 
+  const [, setClockTick] = useState(0);
+
   useEffect(() => {
-    const id = setInterval(() => {
-      if (document.visibilityState === "visible") router.refresh();
-    }, 60_000);
+    if (!showAssignmentAge && !showStateAge) return;
+    const id = setInterval(() => setClockTick((tick) => tick + 1), 60_000);
     return () => clearInterval(id);
-  }, [router]);
+  }, [showAssignmentAge, showStateAge]);
 
   useEffect(() => {
     try {
@@ -199,7 +202,7 @@ export function JobsTableClient({
         open={modalOpen}
         selectedJobs={selectedJobsForModal}
         staffUsers={Array.from(new Map(
-          Object.values(staffBySupervisorId).flat().map((staff) => [staff.id, staff]),
+          [...Object.values(staffBySupervisorId).flat(), ...crossRoleStaffUsers].map((staff) => [staff.id, staff]),
         ).values()).sort((a, b) => (a.name ?? "").localeCompare(b.name ?? ""))}
         supervisorUsers={supervisorUsers}
       />
@@ -221,12 +224,10 @@ export function JobsTableClient({
             managerUsers={managerUsers}
             onClose={() => setAssigningJobId(null)}
             onAssignmentsChange={(assignments) => setDisplayedJobs((current) => current.map((job) =>
-              job.id === assigningJob.id ? { ...job, assignments: assignments.map((assignment) => ({
-                ...assignment,
-                assignedAt: new Date(),
-              })) } : job,
+              job.id === assigningJob.id ? { ...job, assignments } : job,
             ))}
             open={true}
+            crossRoleStaffUsers={crossRoleStaffUsers}
             staffBySupervisorId={staffBySupervisorId}
             supervisorUsers={supervisorUsers}
             userWorkload={userWorkload}
@@ -253,12 +254,13 @@ export function JobsTableClient({
               <TableHead className="cursor-pointer select-none hover:bg-muted/50" onClick={() => handleSort("jobName")}>Job Name<SortIcon col="jobName" /></TableHead>
               <TableHead className="cursor-pointer select-none hover:bg-muted/50" onClick={() => handleSort("department")}>Department<SortIcon col="department" /></TableHead>
               <TableHead className="cursor-pointer select-none hover:bg-muted/50" onClick={() => handleSort("state")}>Source State<SortIcon col="state" /></TableHead>
+              {showStateAge ? <TableHead>State Age</TableHead> : null}
               <TableHead>Manager</TableHead>
               <TableHead>Supervisor</TableHead>
               <TableHead>Staff</TableHead>
               <TableHead />
               {isMyJobs && (currentUserRole === "MANAGER" || currentUserRole === "SUPERVISOR") ? <TableHead /> : null}
-              {showAssignmentAge ? <TableHead>Assigned</TableHead> : null}
+              {showAssignmentAge ? <TableHead>Assigned Since</TableHead> : null}
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -277,6 +279,11 @@ export function JobsTableClient({
                 Boolean(job.jobStateNumber && [3, 4, 5, 6].includes(job.jobStateNumber));
               const ownAssignment = job.assignments.find((assignment) =>
                 assignment.user.id === currentUserId && assignment.assignmentRole === claimRole,
+              );
+              const roleOrder: Record<string, number> = { MANAGER: 0, SUPERVISOR: 1, STAFF: 2 };
+              const timedAssignments = [...job.assignments].sort((a, b) =>
+                (roleOrder[a.assignmentRole] ?? 99) - (roleOrder[b.assignmentRole] ?? 99) ||
+                a.assignedAt.getTime() - b.assignedAt.getTime(),
               );
               const isChecked = selected.has(job.id);
               // Use local overrides if available, fall back to server-computed values
@@ -326,6 +333,15 @@ export function JobsTableClient({
                     <DepartmentBadge code={job.departmentCode} />
                   </TableCell>
                   <TableCell className="max-w-xs text-muted-foreground">{job.xpmState ?? "-"}</TableCell>
+                  {showStateAge ? (
+                    <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
+                      {job.stateEnteredAt && job.jobStateNumber ? (
+                        <time dateTime={job.stateEnteredAt.toISOString()} title={`Entered ${formatDateTime(job.stateEnteredAt)}`}>
+                          State {job.jobStateNumber} &middot; {formatDistanceToNowStrict(job.stateEnteredAt, { addSuffix: true })}
+                        </time>
+                      ) : "-"}
+                    </TableCell>
+                  ) : null}
                   <TableCell>
                     <span className={manager ? "text-sm" : "text-sm text-muted-foreground"}>
                       {manager || "—"}
@@ -385,10 +401,24 @@ export function JobsTableClient({
                     </TableCell>
                   ) : null}
                   {showAssignmentAge ? (
-                    <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
-                      {job.earliestAssignedAt
-                        ? formatDistanceToNowStrict(job.earliestAssignedAt, { addSuffix: true })
-                        : "-"}
+                    <TableCell className="min-w-[210px] text-xs text-muted-foreground">
+                      {timedAssignments.length ? (
+                        <div className="space-y-1">
+                          {timedAssignments.map((assignment) => (
+                            <time
+                              className="block whitespace-nowrap"
+                              dateTime={assignment.assignedAt.toISOString()}
+                              key={assignment.id}
+                              title={`Assigned ${formatDateTime(assignment.assignedAt)}`}
+                            >
+                              <span className="font-medium text-foreground">
+                                {titleCaseEnum(assignment.assignmentRole)} &mdash; {assignment.user.name ?? assignment.user.id}
+                              </span>
+                              {" "}&mdash; {formatDistanceToNowStrict(assignment.assignedAt, { addSuffix: true })}
+                            </time>
+                          ))}
+                        </div>
+                      ) : "-"}
                     </TableCell>
                   ) : null}
                 </TableRow>

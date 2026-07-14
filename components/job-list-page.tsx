@@ -75,7 +75,10 @@ export async function JobListPage({
   const sortDir = (searchParam(rawParams, "sortDir") ?? "asc") as "asc" | "desc";
   const where = buildJobReportWhere(filterParams, user, { scope: "visible" });
 
-  const showAssignmentAge = (await getSystemSetting("showAssignmentAge")) === "true";
+  const [showAssignmentAge, showStateAge] = await Promise.all([
+    getSystemSetting("showAssignmentAge").then((value) => value === "true"),
+    getSystemSetting("showStateAge").then((value) => value === "true"),
+  ]);
 
   const [jobs, total, departments, users, workloadRows] = await Promise.all([
     prisma.job.findMany({
@@ -87,6 +90,7 @@ export async function JobListPage({
         jobName: true,
         xpmState: true,
         jobStateNumber: true,
+        stateEnteredAt: true,
         missingFromLatestImport: true,
         client: { select: { displayName: true, category: true, bookkeepingSoftware: true, bookkeepingBy: true } },
         finalDepartment: { select: { code: true } },
@@ -114,7 +118,7 @@ export async function JobListPage({
     prisma.user.findMany({
       where: { active: true },
       orderBy: { name: "asc" },
-      select: { id: true, name: true, role: true, supervisorId: true },
+      select: { id: true, name: true, role: true, departmentId: true, supervisorId: true },
     }),
     // Active assignment counts per user, per department — workflow states 3-6 only
     prisma.jobAssignment.findMany({
@@ -137,8 +141,27 @@ export async function JobListPage({
 
   const isAdmin = user.role === "ADMIN";
   const isSupervisor = user.role === "SUPERVISOR";
-  const managerUsers = users.filter((u) => managerUserRoles.includes(u.role));
-  const supervisorUsers = users.filter((u) => u.role === "SUPERVISOR");
+  const isSameDepartment = (candidate: (typeof users)[number]) =>
+    Boolean(user.departmentId) && candidate.departmentId === user.departmentId;
+  const currentUserOption = users.find((candidate) => candidate.id === user.id);
+  const managerUsers = users.filter((candidate) =>
+    managerUserRoles.includes(candidate.role) && (isAdmin || isSameDepartment(candidate)),
+  );
+  const elevatedUsers = users.filter((candidate) => candidate.role !== "STAFF");
+  const supervisorUsers = isAdmin
+    ? elevatedUsers
+    : user.role === "MANAGER"
+      ? users.filter((candidate) =>
+          (candidate.role === "SUPERVISOR" && isSameDepartment(candidate)) || candidate.id === user.id,
+        )
+      : user.role === "SUPERVISOR" && currentUserOption
+        ? [currentUserOption]
+        : [];
+  const crossRoleStaffUsers = isAdmin
+    ? elevatedUsers
+    : (user.role === "MANAGER" || user.role === "SUPERVISOR") && currentUserOption
+      ? [currentUserOption]
+      : [];
 
   const staffBySupId = new Map<string, { id: string; name: string | null }[]>();
   for (const u of users) {
@@ -251,35 +274,25 @@ export async function JobListPage({
           isAdmin={isAdmin}
           isSupervisor={isSupervisor}
           showAssignmentAge={showAssignmentAge}
+          showStateAge={showStateAge}
           sortBy={sortBy ?? ""}
           sortDir={sortDir}
-          jobs={jobs.map((j): JobRow => {
-            const supervisorUserId =
-              j.assignments.find((a) => a.assignmentRole === "SUPERVISOR")?.user.id ?? null;
-            return {
-              id: j.id,
-              jobIdFromExcel: j.jobIdFromExcel,
-              clientId: j.clientId,
-              clientName: j.client.displayName,
-              clientCategory: j.client.category,
-              bookkeepingSoftware: j.client.bookkeepingSoftware,
-              bookkeepingBy: j.client.bookkeepingBy,
-              jobName: j.jobName,
-              departmentCode: j.finalDepartment.code,
-              xpmState: j.xpmState,
-              jobStateNumber: j.jobStateNumber,
-              assignments: j.assignments,
-              earliestAssignedAt:
-                j.assignments.length > 0
-                  ? j.assignments.reduce((earliest, a) =>
-                      a.assignedAt < earliest ? a.assignedAt : earliest,
-                      j.assignments[0].assignedAt,
-                    )
-                  : null,
-              staffUsers: supervisorUserId ? (staffBySupId.get(supervisorUserId) ?? []) : [],
-              supervisorMissing: !supervisorUserId,
-            };
-          })}
+          jobs={jobs.map((j): JobRow => ({
+            id: j.id,
+            jobIdFromExcel: j.jobIdFromExcel,
+            clientId: j.clientId,
+            clientName: j.client.displayName,
+            clientCategory: j.client.category,
+            bookkeepingSoftware: j.client.bookkeepingSoftware,
+            bookkeepingBy: j.client.bookkeepingBy,
+            jobName: j.jobName,
+            departmentCode: j.finalDepartment.code,
+            xpmState: j.xpmState,
+            jobStateNumber: j.jobStateNumber,
+            stateEnteredAt: j.stateEnteredAt,
+            assignments: j.assignments,
+          }))}
+          crossRoleStaffUsers={crossRoleStaffUsers}
           managerUsers={managerUsers}
           staffBySupervisorId={Object.fromEntries(staffBySupId)}
           supervisorUsers={supervisorUsers}

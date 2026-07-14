@@ -14,6 +14,21 @@ export function parseJobStateNumber(value: unknown): number | null {
   return number >= 1 && number <= 12 ? number : null;
 }
 
+export function nextStateEnteredAt({
+  previousStateNumber,
+  nextStateNumber,
+  previousStateEnteredAt,
+  observedAt,
+}: {
+  previousStateNumber: number | null;
+  nextStateNumber: number | null;
+  previousStateEnteredAt: Date | null;
+  observedAt: Date;
+}) {
+  if (previousStateNumber === nextStateNumber) return previousStateEnteredAt;
+  return nextStateNumber === null ? null : observedAt;
+}
+
 export function isMainState(number: number | null | undefined) {
   return typeof number === "number" && mainStateNumbers.has(number);
 }

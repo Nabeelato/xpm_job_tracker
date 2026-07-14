@@ -14,7 +14,7 @@ import {
 import { prisma } from "@/lib/db";
 import { detectClientCategoryFromManager, detectDepartment, detectDepartmentFromManager } from "@/lib/import/department";
 import { normalizeClientName, normalizeHeader } from "@/lib/import/normalize";
-import { parseJobStateNumber } from "@/lib/job-state";
+import { nextStateEnteredAt, parseJobStateNumber } from "@/lib/job-state";
 import { departmentDefaultManagerNames } from "@/lib/constants";
 import { getSystemSetting } from "@/lib/settings";
 
@@ -227,8 +227,12 @@ export async function applyImportBatch(
             ? existingJob.finalDepartmentId
             : autoDepartment.id;
         const nextDepartmentManuallyOverridden = shouldForceDepartment ? false : existingJob.departmentManuallyOverridden;
-        const stateChanged = existingJob.jobStateNumber !== jobStateNumber;
-        const stateEnteredAt = stateChanged ? (jobStateNumber ? now : null) : existingJob.stateEnteredAt;
+        const stateEnteredAt = nextStateEnteredAt({
+          previousStateNumber: existingJob.jobStateNumber,
+          nextStateNumber: jobStateNumber,
+          previousStateEnteredAt: existingJob.stateEnteredAt,
+          observedAt: now,
+        });
 
         addLog(logs, existingJob.id, importBatchId, changedById, "client_id", existingJob.clientId, client.id);
         addLog(logs, existingJob.id, importBatchId, changedById, "job_name", existingJob.jobName, row.detectedJobName);

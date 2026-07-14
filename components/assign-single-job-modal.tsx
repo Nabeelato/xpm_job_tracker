@@ -7,10 +7,11 @@ import { Button } from "@/components/ui/button";
 
 type AssignmentRole = "MANAGER" | "SUPERVISOR" | "STAFF";
 type UserRole = "ADMIN" | "MANAGER" | "SUPERVISOR" | "STAFF";
-type RoleUser = { id: string; name: string | null };
+type RoleUser = { id: string; name: string | null; disabled?: boolean };
 type Assignment = {
   id: string;
   assignmentRole: string;
+  assignedAt: Date;
   user: { id: string; name: string | null };
 };
 
@@ -30,6 +31,7 @@ export function AssignSingleJobModal({
   currentUserRole,
   managerUsers,
   supervisorUsers,
+  crossRoleStaffUsers,
   staffBySupervisorId,
   userWorkload,
 }: {
@@ -47,6 +49,7 @@ export function AssignSingleJobModal({
   currentUserRole: UserRole;
   managerUsers: RoleUser[];
   supervisorUsers: RoleUser[];
+  crossRoleStaffUsers: RoleUser[];
   staffBySupervisorId: Record<string, RoleUser[]>;
   userWorkload: Record<string, Record<string, number>>;
 }) {
@@ -72,14 +75,15 @@ export function AssignSingleJobModal({
     for (const supervisorId of supervisorIds) {
       for (const staff of staffBySupervisorId[supervisorId] ?? []) unique.set(staff.id, staff);
     }
+    for (const candidate of crossRoleStaffUsers) unique.set(candidate.id, candidate);
     return [...unique.values()].sort((a, b) => (a.name ?? "").localeCompare(b.name ?? ""));
-  }, [assignedSupervisorIds.join(","), currentUserId, currentUserRole, staffBySupervisorId]);
+  }, [assignedSupervisorIds.join(","), crossRoleStaffUsers, currentUserId, currentUserRole, staffBySupervisorId]);
 
   async function toggle(role: AssignmentRole, target: RoleUser, checked: boolean) {
     const key = `${role}:${target.id}`;
     setSavingKey(key);
     const nextAssignments = checked
-      ? [...assignments, { id: `pending-${key}`, assignmentRole: role, user: target }]
+      ? [...assignments, { id: `pending-${key}`, assignedAt: new Date(), assignmentRole: role, user: target }]
       : assignments.filter((assignment) => !(assignment.assignmentRole === role && assignment.user.id === target.id));
     setAssignments(nextAssignments);
     onAssignmentsChange?.(nextAssignments);
@@ -95,24 +99,40 @@ export function AssignSingleJobModal({
   }
 
   function RoleChecklist({ role, users }: { role: AssignmentRole; users: RoleUser[] }) {
-    const assignedIds = new Set(
-      assignments.filter((assignment) => assignment.assignmentRole === role).map((assignment) => assignment.user.id),
-    );
+    const roleAssignments = assignments.filter((assignment) => assignment.assignmentRole === role);
+    const assignedIds = new Set(roleAssignments.map((assignment) => assignment.user.id));
+    const visibleUsers = new Map(users.map((candidate) => [candidate.id, candidate]));
+    for (const assignment of roleAssignments) {
+      if (!visibleUsers.has(assignment.user.id)) {
+        visibleUsers.set(assignment.user.id, {
+          ...assignment.user,
+          disabled: currentUserRole !== "ADMIN",
+        });
+      }
+    }
+    const candidates = [...visibleUsers.values()].sort((a, b) => (a.name ?? "").localeCompare(b.name ?? ""));
     return (
       <fieldset className="rounded-lg border p-3">
         <legend className="px-1 text-sm font-semibold capitalize">{role.toLowerCase()}s</legend>
         <div className="mt-1 max-h-40 space-y-1 overflow-y-auto">
-          {users.length ? users.map((candidate) => {
+          {candidates.length ? candidates.map((candidate) => {
             const key = `${role}:${candidate.id}`;
             return (
-              <label className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-muted" key={candidate.id}>
+              <label
+                className={candidate.disabled
+                  ? "flex items-center gap-2 rounded px-2 py-1.5 text-sm text-muted-foreground"
+                  : "flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-muted"}
+                key={candidate.id}
+                title={candidate.disabled ? "Only an administrator can change this assignment." : undefined}
+              >
                 <input
                   checked={assignedIds.has(candidate.id)}
-                  disabled={savingKey === key}
+                  disabled={candidate.disabled || savingKey === key}
                   onChange={(event) => void toggle(role, candidate, event.target.checked)}
                   type="checkbox"
                 />
                 <span className="flex-1">{candidate.name ?? candidate.id}{workloadLabel(candidate.id, userWorkload)}</span>
+                {candidate.disabled ? <span className="text-xs">Admin only</span> : null}
                 {savingKey === key ? <span className="text-xs text-muted-foreground">Saving…</span> : null}
               </label>
             );
@@ -137,9 +157,9 @@ export function AssignSingleJobModal({
 
         <div className="space-y-3">
           {currentUserRole !== "SUPERVISOR" ? <RoleChecklist role="MANAGER" users={managerUsers} /> : null}
-          {currentUserRole !== "SUPERVISOR" ? <RoleChecklist role="SUPERVISOR" users={supervisorUsers} /> : null}
+          <RoleChecklist role="SUPERVISOR" users={supervisorUsers} />
           <RoleChecklist role="STAFF" users={staffUsers} />
-          {currentUserRole !== "SUPERVISOR" && assignedSupervisorIds.length === 0 ? (
+          {currentUserRole !== "SUPERVISOR" && assignedSupervisorIds.length === 0 && crossRoleStaffUsers.length === 0 ? (
             <p className="text-xs text-muted-foreground">Assign at least one supervisor to select staff from their teams.</p>
           ) : null}
         </div>
