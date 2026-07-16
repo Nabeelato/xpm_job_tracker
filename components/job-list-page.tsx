@@ -9,7 +9,7 @@ import { Pagination } from "@/components/pagination";
 import { buttonVariants } from "@/components/ui/button";
 import { managerUserRoles } from "@/lib/constants";
 import { prisma } from "@/lib/db";
-import type { JobStateGroup } from "@/lib/job-state";
+import { summarizeJobStateTime, type JobStateGroup } from "@/lib/job-state";
 import { buildJobReportOrderBy, buildJobReportWhere } from "@/lib/reports";
 import { getSystemSetting } from "@/lib/settings";
 import { requireUser } from "@/lib/rbac";
@@ -91,9 +91,11 @@ export async function JobListPage({
         xpmState: true,
         jobStateNumber: true,
         stateEnteredAt: true,
-        jobStartedAt: true,
-        jobCompletedAt: true,
         missingFromLatestImport: true,
+        stateTimeRecords: {
+          where: { stateNumber: { gte: 1, lte: 6 } },
+          select: { stateNumber: true, enteredAt: true, exitedAt: true },
+        },
         client: { select: { displayName: true, category: true, bookkeepingSoftware: true, bookkeepingBy: true } },
         finalDepartment: { select: { code: true } },
         assignments: {
@@ -279,23 +281,26 @@ export async function JobListPage({
           showStateAge={showStateAge}
           sortBy={sortBy ?? ""}
           sortDir={sortDir}
-          jobs={jobs.map((j): JobRow => ({
-            id: j.id,
-            jobIdFromExcel: j.jobIdFromExcel,
-            clientId: j.clientId,
-            clientName: j.client.displayName,
-            clientCategory: j.client.category,
-            bookkeepingSoftware: j.client.bookkeepingSoftware,
-            bookkeepingBy: j.client.bookkeepingBy,
-            jobName: j.jobName,
-            departmentCode: j.finalDepartment.code,
-            xpmState: j.xpmState,
-            jobStateNumber: j.jobStateNumber,
-            stateEnteredAt: j.stateEnteredAt,
-            jobStartedAt: j.jobStartedAt,
-            jobCompletedAt: j.jobCompletedAt,
-            assignments: j.assignments,
-          }))}
+          jobs={jobs.map((j): JobRow => {
+            const stateTime = summarizeJobStateTime(j.stateTimeRecords, j.jobStateNumber);
+            return {
+              id: j.id,
+              jobIdFromExcel: j.jobIdFromExcel,
+              clientId: j.clientId,
+              clientName: j.client.displayName,
+              clientCategory: j.client.category,
+              bookkeepingSoftware: j.client.bookkeepingSoftware,
+              bookkeepingBy: j.client.bookkeepingBy,
+              jobName: j.jobName,
+              departmentCode: j.finalDepartment.code,
+              xpmState: j.xpmState,
+              jobStateNumber: j.jobStateNumber,
+              stateEnteredAt: j.stateEnteredAt,
+              stateIdleAccumulatedMs: stateTime.accumulatedMs,
+              stateIdleActiveEnteredAt: stateTime.activeEnteredAt,
+              assignments: j.assignments,
+            };
+          })}
           crossRoleStaffUsers={crossRoleStaffUsers}
           managerUsers={managerUsers}
           staffBySupervisorId={Object.fromEntries(staffBySupId)}

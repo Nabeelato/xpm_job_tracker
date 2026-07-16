@@ -1,32 +1,37 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { formatDateTime, formatElapsedTime } from "@/lib/utils";
+import { formatDateTime, formatElapsedMilliseconds } from "@/lib/utils";
 
-export function JobIdleTime({
-  startedAt,
-  completedAt,
+export function JobStateIdleTime({
+  stateNumber,
+  accumulatedMs,
+  activeEnteredAt,
 }: {
-  startedAt: Date | string | null;
-  completedAt: Date | string | null;
+  stateNumber: number | null;
+  accumulatedMs: number;
+  activeEnteredAt: Date | string | null;
 }) {
   const [, setClockTick] = useState(0);
 
   useEffect(() => {
-    if (!startedAt || completedAt) return;
+    if (!activeEnteredAt) return;
     const id = setInterval(() => setClockTick((tick) => tick + 1), 60_000);
     return () => clearInterval(id);
-  }, [completedAt, startedAt]);
+  }, [activeEnteredAt]);
 
-  if (!startedAt) return <>-</>;
+  if (stateNumber === null || stateNumber < 1 || stateNumber > 6) return <>-</>;
+  const enteredAt = activeEnteredAt
+    ? typeof activeEnteredAt === "string" ? new Date(activeEnteredAt) : activeEnteredAt
+    : null;
+  const elapsedMs = accumulatedMs + (enteredAt ? Math.max(0, Date.now() - enteredAt.getTime()) : 0);
+  const title = enteredAt
+    ? `Current state ${stateNumber} visit started ${formatDateTime(enteredAt)}; previous accumulated time ${formatElapsedMilliseconds(accumulatedMs)}`
+    : `Recorded time in state ${stateNumber}`;
 
   return (
-    <time
-      dateTime={typeof startedAt === "string" ? startedAt : startedAt.toISOString()}
-      title={`Started ${formatDateTime(startedAt)}${completedAt ? `; completed ${formatDateTime(completedAt)}` : ""}`}
-    >
-      {completedAt ? "Completed" : "Running"} &middot;{" "}
-      {formatElapsedTime(startedAt, completedAt ?? new Date())}
-    </time>
+    <span title={title}>
+      State {stateNumber} &middot; {formatElapsedMilliseconds(elapsedMs)}
+    </span>
   );
 }

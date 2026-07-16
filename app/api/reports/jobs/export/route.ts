@@ -14,7 +14,8 @@ import {
   type JobReportScope,
 } from "@/lib/reports";
 import { getCurrentUser } from "@/lib/rbac";
-import { formatDateTime, formatElapsedTime, titleCaseEnum } from "@/lib/utils";
+import { summarizeJobStateTime } from "@/lib/job-state";
+import { formatDateTime, formatElapsedMilliseconds, titleCaseEnum } from "@/lib/utils";
 
 function assignmentNames(
   assignments: Array<{ assignmentRole: AssignmentRole; user: { name: string | null } }>,
@@ -72,14 +73,13 @@ export async function GET(req: NextRequest) {
       jobIdFromExcel: true,
       jobName: true,
       xpmState: true,
+      jobStateNumber: true,
       sourceManagerName: true,
       sourcePartnerName: true,
       internalStatus: true,
       missingFromLatestImport: true,
       archived: true,
       stateEnteredAt: true,
-      jobStartedAt: true,
-      jobCompletedAt: true,
       lastSeenAt: true,
       createdAt: true,
       updatedAt: true,
@@ -92,6 +92,10 @@ export async function GET(req: NextRequest) {
         },
       },
       finalDepartment: { select: { code: true, name: true } },
+      stateTimeRecords: {
+        where: { stateNumber: { gte: 1, lte: 6 } },
+        select: { stateNumber: true, enteredAt: true, exitedAt: true },
+      },
       assignments: {
         where: { active: true },
         select: {
@@ -147,9 +151,7 @@ export async function GET(req: NextRequest) {
       { header: "Client Category", key: "clientCategory", width: 20 },
       { header: "Bookkeeping Software", key: "bookkeepingSoftware", width: 20 },
       { header: "Bookkeeping By", key: "bookkeepingBy", width: 18 },
-      { header: "Job Started At", key: "jobStartedAt", width: 22 },
-      { header: "Job Completed At", key: "jobCompletedAt", width: 22 },
-      { header: "Idle Time", key: "idleTime", width: 16 },
+      { header: "State Idle Time", key: "stateIdleTime", width: 18 },
       { header: "Manager", key: "manager", width: 22 },
       { header: "Supervisor", key: "supervisor", width: 22 },
       { header: "Staff", key: "staff", width: 22 },
@@ -163,35 +165,40 @@ export async function GET(req: NextRequest) {
       { header: "Created At", key: "createdAt", width: 22 },
       { header: "Updated At", key: "updatedAt", width: 22 },
     ],
-    jobs.map((job) => ({
-      jobNo: job.jobIdFromExcel,
-      client: job.client.displayName,
-      jobName: job.jobName,
-      department: job.finalDepartment.name,
-      sourceState: job.xpmState ?? "-",
-      clientCategory: job.client.category ? clientCategoryLabels[job.client.category] : "",
-      bookkeepingSoftware: job.client.bookkeepingSoftware
-        ? bookkeepingSoftwareLabels[job.client.bookkeepingSoftware]
-        : "",
-      bookkeepingBy: job.client.bookkeepingBy ? bookkeepingByLabels[job.client.bookkeepingBy] : "",
-      jobStartedAt: formatDateTime(job.jobStartedAt),
-      jobCompletedAt: formatDateTime(job.jobCompletedAt),
-      idleTime: job.jobStartedAt
-        ? formatElapsedTime(job.jobStartedAt, job.jobCompletedAt ?? new Date())
-        : "",
-      manager: assignmentNames(job.assignments, "MANAGER"),
-      supervisor: assignmentNames(job.assignments, "SUPERVISOR"),
-      staff: assignmentNames(job.assignments, "STAFF"),
-      sourceManager: job.sourceManagerName ?? "",
-      sourcePartner: job.sourcePartnerName ?? "",
-      internalStatus: titleCaseEnum(job.internalStatus),
-      missingLatest: job.missingFromLatestImport ? "Yes" : "No",
-      archived: job.archived ? "Yes" : "No",
-      stateEnteredAt: formatDateTime(job.stateEnteredAt),
-      lastSeenAt: formatDateTime(job.lastSeenAt),
-      createdAt: formatDateTime(job.createdAt),
-      updatedAt: formatDateTime(job.updatedAt),
-    })),
+    jobs.map((job) => {
+      const stateTime = summarizeJobStateTime(job.stateTimeRecords, job.jobStateNumber);
+      const activeElapsedMs = stateTime.activeEnteredAt
+        ? Math.max(0, Date.now() - stateTime.activeEnteredAt.getTime())
+        : 0;
+      const stateIdleTime = job.jobStateNumber !== null && job.jobStateNumber >= 1 && job.jobStateNumber <= 6
+        ? `State ${job.jobStateNumber} · ${formatElapsedMilliseconds(stateTime.accumulatedMs + activeElapsedMs)}`
+        : "";
+      return {
+        jobNo: job.jobIdFromExcel,
+        client: job.client.displayName,
+        jobName: job.jobName,
+        department: job.finalDepartment.name,
+        sourceState: job.xpmState ?? "-",
+        clientCategory: job.client.category ? clientCategoryLabels[job.client.category] : "",
+        bookkeepingSoftware: job.client.bookkeepingSoftware
+          ? bookkeepingSoftwareLabels[job.client.bookkeepingSoftware]
+          : "",
+        bookkeepingBy: job.client.bookkeepingBy ? bookkeepingByLabels[job.client.bookkeepingBy] : "",
+        stateIdleTime,
+        manager: assignmentNames(job.assignments, "MANAGER"),
+        supervisor: assignmentNames(job.assignments, "SUPERVISOR"),
+        staff: assignmentNames(job.assignments, "STAFF"),
+        sourceManager: job.sourceManagerName ?? "",
+        sourcePartner: job.sourcePartnerName ?? "",
+        internalStatus: titleCaseEnum(job.internalStatus),
+        missingLatest: job.missingFromLatestImport ? "Yes" : "No",
+        archived: job.archived ? "Yes" : "No",
+        stateEnteredAt: formatDateTime(job.stateEnteredAt),
+        lastSeenAt: formatDateTime(job.lastSeenAt),
+        createdAt: formatDateTime(job.createdAt),
+        updatedAt: formatDateTime(job.updatedAt),
+      };
+    }),
   );
 
   const filename = `jobs-detail-${roleLabel(user.role).toLowerCase().replace(/\s+/g, "-")}-${new Date().toISOString().slice(0, 10)}.xlsx`;

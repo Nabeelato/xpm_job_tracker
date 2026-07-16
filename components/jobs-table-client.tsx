@@ -12,7 +12,7 @@ import { AssignSingleJobModal } from "@/components/assign-single-job-modal";
 import { DepartmentBadge } from "@/components/department-badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { cn, formatDateTime, formatElapsedTime, titleCaseEnum } from "@/lib/utils";
+import { cn, formatDateTime, formatElapsedMilliseconds, titleCaseEnum } from "@/lib/utils";
 import { bulkOwnJobsAction, claimJobAction, releaseOwnJobAction } from "@/app/(app)/jobs/actions";
 
 type RoleUser = { id: string; name: string | null };
@@ -37,8 +37,8 @@ export type JobRow = {
   xpmState: string | null;
   jobStateNumber: number | null;
   stateEnteredAt: Date | null;
-  jobStartedAt: Date | null;
-  jobCompletedAt: Date | null;
+  stateIdleAccumulatedMs: number;
+  stateIdleActiveEnteredAt: Date | null;
   assignments: Assignment[];
 };
 
@@ -256,7 +256,7 @@ export function JobsTableClient({
               <TableHead className="cursor-pointer select-none hover:bg-muted/50" onClick={() => handleSort("department")}>Department<SortIcon col="department" /></TableHead>
               <TableHead className="cursor-pointer select-none hover:bg-muted/50" onClick={() => handleSort("state")}>Source State<SortIcon col="state" /></TableHead>
               {showStateAge ? <TableHead>State Age</TableHead> : null}
-              <TableHead>Idle Time</TableHead>
+              <TableHead>State Idle Time</TableHead>
               <TableHead>Manager</TableHead>
               <TableHead>Supervisor</TableHead>
               <TableHead>Staff</TableHead>
@@ -292,7 +292,11 @@ export function JobsTableClient({
               const isSoftware = job.clientCategory === "SOFTWARE";
               const isCancelled = job.jobStateNumber === 12;
               const isCompleted = job.jobStateNumber === 11;
-              const idleTimeEnd = job.jobCompletedAt ?? new Date();
+              const isTimedState = job.jobStateNumber !== null && job.jobStateNumber >= 1 && job.jobStateNumber <= 6;
+              const activeStateElapsedMs = job.stateIdleActiveEnteredAt
+                ? Math.max(0, Date.now() - job.stateIdleActiveEnteredAt.getTime())
+                : 0;
+              const stateIdleTimeMs = job.stateIdleAccumulatedMs + activeStateElapsedMs;
               return (
                 <TableRow
                   className={cn(
@@ -346,17 +350,15 @@ export function JobsTableClient({
                     </TableCell>
                   ) : null}
                   <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
-                    {job.jobStartedAt ? (
+                    {isTimedState ? (
                       <time
-                        dateTime={job.jobStartedAt.toISOString()}
-                        title={`Started ${formatDateTime(job.jobStartedAt)}${
-                          job.jobCompletedAt ? `; completed ${formatDateTime(job.jobCompletedAt)}` : ""
-                        }`}
+                        dateTime={job.stateIdleActiveEnteredAt?.toISOString()}
+                        title={job.stateIdleActiveEnteredAt
+                          ? `Current visit started ${formatDateTime(job.stateIdleActiveEnteredAt)}; previous state-${job.jobStateNumber} time ${formatElapsedMilliseconds(job.stateIdleAccumulatedMs)}`
+                          : `Recorded time in state ${job.jobStateNumber}`}
                       >
-                        <span className="font-medium text-foreground">
-                          {job.jobCompletedAt ? "Completed" : "Running"}
-                        </span>
-                        {" "}&middot; {formatElapsedTime(job.jobStartedAt, idleTimeEnd)}
+                        <span className="font-medium text-foreground">State {job.jobStateNumber}</span>
+                        {" "}&middot; {formatElapsedMilliseconds(stateIdleTimeMs)}
                       </time>
                     ) : "-"}
                   </TableCell>

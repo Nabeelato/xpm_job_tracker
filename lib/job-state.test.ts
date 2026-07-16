@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { nextJobLifecycleTimestamps, nextStateEnteredAt, parseJobStateNumber } from "./job-state";
-import { formatElapsedTime } from "./utils";
+import {
+  jobStateTimerTransition,
+  nextStateEnteredAt,
+  parseJobStateNumber,
+  summarizeJobStateTime,
+} from "./job-state";
+import { formatElapsedMilliseconds } from "./utils";
 
 const previousEnteredAt = new Date("2026-07-13T09:00:00.000Z");
 const observedAt = new Date("2026-07-14T09:00:00.000Z");
@@ -46,55 +51,43 @@ test("clearing the numeric state clears state entry time", () => {
   }), null);
 });
 
-test("job lifecycle starts once at state 3 and continues through intermediate states", () => {
-  const started = nextJobLifecycleTimestamps({
-    nextStateNumber: 3,
-    jobStartedAt: null,
-    jobCompletedAt: null,
-    observedAt,
+test("state timer closes and restarts on each numeric state change", () => {
+  assert.deepEqual(jobStateTimerTransition(3, 4), {
+    closeActiveRecord: true,
+    startStateNumber: 4,
   });
-  assert.equal(started.jobStartedAt, observedAt);
-  assert.equal(started.jobCompletedAt, null);
-
-  const laterObservation = new Date("2026-07-15T09:00:00.000Z");
-  const progressed = nextJobLifecycleTimestamps({
-    nextStateNumber: 6,
-    jobStartedAt: started.jobStartedAt,
-    jobCompletedAt: started.jobCompletedAt,
-    observedAt: laterObservation,
+  assert.deepEqual(jobStateTimerTransition(4, 7), {
+    closeActiveRecord: true,
+    startStateNumber: null,
   });
-  assert.equal(progressed.jobStartedAt, observedAt);
-  assert.equal(progressed.jobCompletedAt, null);
+  assert.deepEqual(jobStateTimerTransition(3, 3), {
+    closeActiveRecord: false,
+    startStateNumber: null,
+  });
 });
 
-test("job lifecycle freezes on the first observation of state 11", () => {
-  const completedAt = new Date("2026-07-16T09:00:00.000Z");
-  const completed = nextJobLifecycleTimestamps({
-    nextStateNumber: 11,
-    jobStartedAt: previousEnteredAt,
-    jobCompletedAt: null,
-    observedAt: completedAt,
-  });
-  assert.equal(completed.jobStartedAt, previousEnteredAt);
-  assert.equal(completed.jobCompletedAt, completedAt);
+test("returning to a previous state resumes its accumulated timer", () => {
+  const firstVisitStarted = new Date("2026-07-13T09:00:00.000Z");
+  const firstVisitEnded = new Date("2026-07-13T11:30:00.000Z");
+  const resumedAt = new Date("2026-07-14T09:00:00.000Z");
+  const summary = summarizeJobStateTime([
+    { stateNumber: 3, enteredAt: firstVisitStarted, exitedAt: firstVisitEnded },
+    { stateNumber: 5, enteredAt: firstVisitEnded, exitedAt: resumedAt },
+    { stateNumber: 3, enteredAt: resumedAt, exitedAt: null },
+  ], 3);
 
-  const laterImport = new Date("2026-07-17T09:00:00.000Z");
-  const preserved = nextJobLifecycleTimestamps({
-    nextStateNumber: 11,
-    jobStartedAt: completed.jobStartedAt,
-    jobCompletedAt: completed.jobCompletedAt,
-    observedAt: laterImport,
-  });
-  assert.equal(preserved.jobCompletedAt, completedAt);
-});
-
-test("idle time reports the elapsed state-3 to state-11 duration", () => {
+  assert.equal(summary.accumulatedMs, 2.5 * 60 * 60 * 1_000);
+  assert.equal(summary.activeEnteredAt, resumedAt);
   assert.equal(
-    formatElapsedTime(
-      new Date("2026-07-13T09:00:00.000Z"),
-      new Date("2026-07-15T12:27:00.000Z"),
+    formatElapsedMilliseconds(
+      summary.accumulatedMs + new Date("2026-07-14T10:15:00.000Z").getTime() - resumedAt.getTime(),
     ),
-    "2d 3h",
+    "3h 45m",
   );
-  assert.equal(formatElapsedTime(null, observedAt), "-");
+});
+
+test("states 7 and above do not start timers", () => {
+  for (const state of [7, 8, 11, 12]) {
+    assert.equal(jobStateTimerTransition(6, state).startStateNumber, null);
+  }
 });

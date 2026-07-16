@@ -29,21 +29,47 @@ export function nextStateEnteredAt({
   return nextStateNumber === null ? null : observedAt;
 }
 
-export function nextJobLifecycleTimestamps({
-  nextStateNumber,
-  jobStartedAt,
-  jobCompletedAt,
-  observedAt,
-}: {
-  nextStateNumber: number | null;
-  jobStartedAt: Date | null;
-  jobCompletedAt: Date | null;
-  observedAt: Date;
-}) {
+export function isTimedJobState(stateNumber: number | null | undefined): stateNumber is number {
+  return typeof stateNumber === "number" && stateNumber >= 1 && stateNumber <= 6;
+}
+
+export function jobStateTimerTransition(
+  previousStateNumber: number | null,
+  nextStateNumber: number | null,
+) {
+  const stateChanged = previousStateNumber !== nextStateNumber;
   return {
-    jobStartedAt: jobStartedAt ?? (nextStateNumber === 3 ? observedAt : null),
-    jobCompletedAt: jobCompletedAt ?? (nextStateNumber === 11 ? observedAt : null),
+    closeActiveRecord: stateChanged,
+    startStateNumber: stateChanged && isTimedJobState(nextStateNumber) ? nextStateNumber : null,
   };
+}
+
+export type JobStateTimeRecordValue = {
+  stateNumber: number;
+  enteredAt: Date;
+  exitedAt: Date | null;
+};
+
+export function summarizeJobStateTime(
+  records: JobStateTimeRecordValue[],
+  stateNumber: number | null | undefined,
+) {
+  if (!isTimedJobState(stateNumber)) {
+    return { accumulatedMs: 0, activeEnteredAt: null as Date | null };
+  }
+
+  let accumulatedMs = 0;
+  let activeEnteredAt: Date | null = null;
+  for (const record of records) {
+    if (record.stateNumber !== stateNumber) continue;
+    if (record.exitedAt) {
+      accumulatedMs += Math.max(0, record.exitedAt.getTime() - record.enteredAt.getTime());
+    } else if (!activeEnteredAt || record.enteredAt > activeEnteredAt) {
+      activeEnteredAt = record.enteredAt;
+    }
+  }
+
+  return { accumulatedMs, activeEnteredAt };
 }
 
 export function isMainState(number: number | null | undefined) {

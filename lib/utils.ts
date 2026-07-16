@@ -34,6 +34,10 @@ export function formatElapsedTime(
   const start = typeof startValue === "string" ? new Date(startValue) : startValue;
   const end = typeof endValue === "string" ? new Date(endValue) : endValue;
   const elapsedMs = end.getTime() - start.getTime();
+  return formatElapsedMilliseconds(elapsedMs);
+}
+
+export function formatElapsedMilliseconds(elapsedMs: number) {
   if (!Number.isFinite(elapsedMs) || elapsedMs < 0) return "-";
 
   const totalMinutes = Math.floor(elapsedMs / 60_000);

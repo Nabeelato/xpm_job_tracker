@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Archive, UserPlus } from "lucide-react";
 import { DepartmentBadge } from "@/components/department-badge";
-import { JobIdleTime } from "@/components/job-idle-time";
+import { JobStateIdleTime } from "@/components/job-idle-time";
 import { PageHeader } from "@/components/page-header";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
@@ -12,8 +12,9 @@ import { JobComments } from "@/components/job-comments";
 import { assignmentRoles, bookkeepingByLabels, bookkeepingSoftwareLabels, internalStatuses, userRoles } from "@/lib/constants";
 import { canAssignUserToRole, canManageJobAssignmentRole } from "@/lib/assignment-permissions";
 import { prisma } from "@/lib/db";
+import { summarizeJobStateTime } from "@/lib/job-state";
 import { assertCanViewJob, canArchiveJobs, canAssignJobs, requireUser, visibleJobsWhere } from "@/lib/rbac";
-import { formatDateTime, titleCaseEnum } from "@/lib/utils";
+import { formatDateTime, formatElapsedTime, titleCaseEnum } from "@/lib/utils";
 import { updateClientBookkeepingAction } from "@/app/(app)/clients/actions";
 import {
   archiveJobAction,
@@ -37,8 +38,6 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
       xpmState: true,
       jobStateNumber: true,
       stateEnteredAt: true,
-      jobStartedAt: true,
-      jobCompletedAt: true,
       sourceManagerName: true,
       sourcePartnerName: true,
       finalDepartmentId: true,
@@ -79,6 +78,10 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
         orderBy: { changedAt: "desc" },
         take: 50,
       },
+      stateTimeRecords: {
+        select: { id: true, stateNumber: true, enteredAt: true, exitedAt: true },
+        orderBy: { enteredAt: "desc" },
+      },
     },
   });
 
@@ -111,6 +114,8 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
   const canManageAssignments = user.role === "ADMIN" || (
     user.role === "MANAGER" && activeAssignmentRefs.some((assignment) => assignment.userId === user.id)
   );
+  const currentStateTime = summarizeJobStateTime(job.stateTimeRecords, job.jobStateNumber);
+  const recordedStates = Array.from(new Set(job.stateTimeRecords.map((record) => record.stateNumber))).sort((a, b) => a - b);
   return (
     <>
       <PageHeader title={job.jobIdFromExcel} description={job.jobName} />
@@ -162,16 +167,14 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
                   <dd>{formatDateTime(job.stateEnteredAt)}</dd>
                 </div>
                 <div>
-                  <dt className="text-muted-foreground">Job Started</dt>
-                  <dd>{formatDateTime(job.jobStartedAt)}</dd>
-                </div>
-                <div>
-                  <dt className="text-muted-foreground">Job Completed</dt>
-                  <dd>{formatDateTime(job.jobCompletedAt)}</dd>
-                </div>
-                <div>
-                  <dt className="text-muted-foreground">Idle Time</dt>
-                  <dd><JobIdleTime completedAt={job.jobCompletedAt} startedAt={job.jobStartedAt} /></dd>
+                  <dt className="text-muted-foreground">State Idle Time</dt>
+                  <dd>
+                    <JobStateIdleTime
+                      accumulatedMs={currentStateTime.accumulatedMs}
+                      activeEnteredAt={currentStateTime.activeEnteredAt}
+                      stateNumber={job.jobStateNumber}
+                    />
+                  </dd>
                 </div>
                 <div>
                   <dt className="text-muted-foreground">Source Manager</dt>
@@ -190,6 +193,57 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
                   <dd>{job.missingFromLatestImport ? "Yes" : "No"}</dd>
                 </div>
               </dl>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>State Idle Records</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              {recordedStates.length ? (
+                <>
+                  <div>
+                    <div className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      Cumulative time by state
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {recordedStates.map((stateNumber) => {
+                        const summary = summarizeJobStateTime(job.stateTimeRecords, stateNumber);
+                        return (
+                          <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm" key={stateNumber}>
+                            <JobStateIdleTime
+                              accumulatedMs={summary.accumulatedMs}
+                              activeEnteredAt={summary.activeEnteredAt}
+                              stateNumber={stateNumber}
+                            />
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">State visits</div>
+                    {job.stateTimeRecords.map((record) => (
+                      <div className="grid gap-2 rounded-md border p-3 text-sm sm:grid-cols-[90px_1fr_1fr_auto] sm:items-center" key={record.id}>
+                        <span className="font-medium">State {record.stateNumber}</span>
+                        <span>
+                          <span className="text-muted-foreground">Entered:</span> {formatDateTime(record.enteredAt)}
+                        </span>
+                        <span>
+                          <span className="text-muted-foreground">Exited:</span>{" "}
+                          {record.exitedAt ? formatDateTime(record.exitedAt) : "Active"}
+                        </span>
+                        <span className="whitespace-nowrap text-muted-foreground">
+                          {record.exitedAt ? formatElapsedTime(record.enteredAt, record.exitedAt) : "Running"}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <p className="text-sm text-muted-foreground">No timed state visits recorded yet.</p>
+              )}
             </CardContent>
           </Card>
 

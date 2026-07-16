@@ -163,8 +163,6 @@ model Job {
   xpmState                       String?          @map("xpm_state")
   jobStateNumber                 Int?             @map("job_state_number")
   stateEnteredAt                 DateTime?        @map("state_entered_at")
-  jobStartedAt                   DateTime?        @map("job_started_at")
-  jobCompletedAt                 DateTime?        @map("job_completed_at")
   sourceManagerName              String?          @map("source_manager_name")
   sourcePartnerName              String?          @map("source_partner_name")
   autoDetectedDepartmentId       String?          @map("auto_detected_department_id")
@@ -185,6 +183,7 @@ model Job {
   assignments                    JobAssignment[]
   importRows                     ImportRow[]
   changeLogs                     JobChangeLog[]
+  stateTimeRecords               JobStateTimeRecord[]
   comments                       JobComment[]
   notifications                  Notification[]
 
@@ -201,6 +200,20 @@ model Job {
   @@index([finalDepartmentId, updatedAt])
   @@index([clientId, updatedAt])
   @@map("jobs")
+}
+
+model JobStateTimeRecord {
+  id          String    @id @default(cuid())
+  jobId       String    @map("job_id")
+  job         Job       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  stateNumber Int       @map("state_number")
+  enteredAt   DateTime  @map("entered_at")
+  exitedAt    DateTime? @map("exited_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  @@index([jobId, stateNumber])
+  @@index([jobId, exitedAt])
+  @@map("job_state_time_records")
 }
 
 model JobAssignment {
