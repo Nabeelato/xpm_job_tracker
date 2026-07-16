@@ -14,7 +14,7 @@ import {
 import { prisma } from "@/lib/db";
 import { detectClientCategoryFromManager, detectDepartment, detectDepartmentFromManager } from "@/lib/import/department";
 import { normalizeClientName, normalizeHeader } from "@/lib/import/normalize";
-import { nextStateEnteredAt, parseJobStateNumber } from "@/lib/job-state";
+import { nextJobLifecycleTimestamps, nextStateEnteredAt, parseJobStateNumber } from "@/lib/job-state";
 import { departmentDefaultManagerNames } from "@/lib/constants";
 import { getSystemSetting } from "@/lib/settings";
 
@@ -198,6 +198,8 @@ export async function applyImportBatch(
               xpmState,
               jobStateNumber,
               stateEnteredAt: jobStateNumber ? now : null,
+              jobStartedAt: jobStateNumber === 3 ? now : null,
+              jobCompletedAt: jobStateNumber === 11 ? now : null,
               sourceManagerName,
               sourcePartnerName,
               autoDetectedDepartmentId: autoDepartment.id,
@@ -233,6 +235,12 @@ export async function applyImportBatch(
           previousStateEnteredAt: existingJob.stateEnteredAt,
           observedAt: now,
         });
+        const lifecycleTimestamps = nextJobLifecycleTimestamps({
+          nextStateNumber: jobStateNumber,
+          jobStartedAt: existingJob.jobStartedAt,
+          jobCompletedAt: existingJob.jobCompletedAt,
+          observedAt: now,
+        });
 
         addLog(logs, existingJob.id, importBatchId, changedById, "client_id", existingJob.clientId, client.id);
         addLog(logs, existingJob.id, importBatchId, changedById, "job_name", existingJob.jobName, row.detectedJobName);
@@ -240,6 +248,8 @@ export async function applyImportBatch(
         addLog(logs, existingJob.id, importBatchId, changedById, "xpm_state", existingJob.xpmState, xpmState);
         addLog(logs, existingJob.id, importBatchId, changedById, "job_state_number", existingJob.jobStateNumber, jobStateNumber);
         addLog(logs, existingJob.id, importBatchId, changedById, "state_entered_at", existingJob.stateEnteredAt, stateEnteredAt);
+        addLog(logs, existingJob.id, importBatchId, changedById, "job_started_at", existingJob.jobStartedAt, lifecycleTimestamps.jobStartedAt);
+        addLog(logs, existingJob.id, importBatchId, changedById, "job_completed_at", existingJob.jobCompletedAt, lifecycleTimestamps.jobCompletedAt);
         addLog(logs, existingJob.id, importBatchId, changedById, "source_manager_name", existingJob.sourceManagerName, sourceManagerName);
         addLog(logs, existingJob.id, importBatchId, changedById, "source_partner_name", existingJob.sourcePartnerName, sourcePartnerName);
         addLog(logs, existingJob.id, importBatchId, changedById, "auto_detected_department_id", existingJob.autoDetectedDepartmentId, autoDepartment.id);
@@ -264,6 +274,8 @@ export async function applyImportBatch(
             xpmState,
             jobStateNumber,
             stateEnteredAt,
+            jobStartedAt: lifecycleTimestamps.jobStartedAt,
+            jobCompletedAt: lifecycleTimestamps.jobCompletedAt,
             sourceManagerName,
             sourcePartnerName,
             autoDetectedDepartmentId: autoDepartment.id,

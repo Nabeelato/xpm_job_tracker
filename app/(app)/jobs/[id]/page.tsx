@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Archive, UserPlus } from "lucide-react";
 import { DepartmentBadge } from "@/components/department-badge";
+import { JobIdleTime } from "@/components/job-idle-time";
 import { PageHeader } from "@/components/page-header";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
@@ -36,6 +37,8 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
       xpmState: true,
       jobStateNumber: true,
       stateEnteredAt: true,
+      jobStartedAt: true,
+      jobCompletedAt: true,
       sourceManagerName: true,
       sourcePartnerName: true,
       finalDepartmentId: true,
@@ -157,6 +160,18 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
                 <div>
                   <dt className="text-muted-foreground">State Entered</dt>
                   <dd>{formatDateTime(job.stateEnteredAt)}</dd>
+                </div>
+                <div>
+                  <dt className="text-muted-foreground">Job Started</dt>
+                  <dd>{formatDateTime(job.jobStartedAt)}</dd>
+                </div>
+                <div>
+                  <dt className="text-muted-foreground">Job Completed</dt>
+                  <dd>{formatDateTime(job.jobCompletedAt)}</dd>
+                </div>
+                <div>
+                  <dt className="text-muted-foreground">Idle Time</dt>
+                  <dd><JobIdleTime completedAt={job.jobCompletedAt} startedAt={job.jobStartedAt} /></dd>
                 </div>
                 <div>
                   <dt className="text-muted-foreground">Source Manager</dt>

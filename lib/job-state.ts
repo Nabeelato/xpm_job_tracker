@@ -29,6 +29,23 @@ export function nextStateEnteredAt({
   return nextStateNumber === null ? null : observedAt;
 }
 
+export function nextJobLifecycleTimestamps({
+  nextStateNumber,
+  jobStartedAt,
+  jobCompletedAt,
+  observedAt,
+}: {
+  nextStateNumber: number | null;
+  jobStartedAt: Date | null;
+  jobCompletedAt: Date | null;
+  observedAt: Date;
+}) {
+  return {
+    jobStartedAt: jobStartedAt ?? (nextStateNumber === 3 ? observedAt : null),
+    jobCompletedAt: jobCompletedAt ?? (nextStateNumber === 11 ? observedAt : null),
+  };
+}
+
 export function isMainState(number: number | null | undefined) {
   return typeof number === "number" && mainStateNumbers.has(number);
 }

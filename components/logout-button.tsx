@@ -1,6 +1,7 @@
 "use client";
 
 import { LogOut } from "lucide-react";
+import { signOut } from "next-auth/react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 
@@ -10,21 +11,10 @@ export function LogoutButton() {
   async function handleSignOut() {
     setPending(true);
     try {
-      const csrfResponse = await fetch("/api/auth/csrf");
-      const { csrfToken } = (await csrfResponse.json()) as { csrfToken?: string };
-      const signOutResponse = await fetch("/api/auth/signout", {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams({
-          callbackUrl: "/login",
-          csrfToken: csrfToken ?? "",
-          json: "true",
-        }),
-      });
-      const data = (await signOutResponse.json()) as { url?: string };
-      window.location.href = data.url ?? "/login";
+      await signOut({ callbackUrl: "/login", redirect: false });
+      window.location.replace("/login");
     } catch {
-      window.location.href = "/login";
+      window.location.replace("/login");
     }
   }
 

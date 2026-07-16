@@ -163,6 +163,8 @@ model Job {
   xpmState                       String?          @map("xpm_state")
   jobStateNumber                 Int?             @map("job_state_number")
   stateEnteredAt                 DateTime?        @map("state_entered_at")
+  jobStartedAt                   DateTime?        @map("job_started_at")
+  jobCompletedAt                 DateTime?        @map("job_completed_at")
   sourceManagerName              String?          @map("source_manager_name")
   sourcePartnerName              String?          @map("source_partner_name")
   autoDetectedDepartmentId       String?          @map("auto_detected_department_id")

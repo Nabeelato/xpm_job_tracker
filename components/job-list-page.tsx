@@ -91,6 +91,8 @@ export async function JobListPage({
         xpmState: true,
         jobStateNumber: true,
         stateEnteredAt: true,
+        jobStartedAt: true,
+        jobCompletedAt: true,
         missingFromLatestImport: true,
         client: { select: { displayName: true, category: true, bookkeepingSoftware: true, bookkeepingBy: true } },
         finalDepartment: { select: { code: true } },
@@ -290,6 +292,8 @@ export async function JobListPage({
             xpmState: j.xpmState,
             jobStateNumber: j.jobStateNumber,
             stateEnteredAt: j.stateEnteredAt,
+            jobStartedAt: j.jobStartedAt,
+            jobCompletedAt: j.jobCompletedAt,
             assignments: j.assignments,
           }))}
           crossRoleStaffUsers={crossRoleStaffUsers}
