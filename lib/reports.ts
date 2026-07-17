@@ -213,6 +213,15 @@ export function buildJobReportWhere(
         { jobIdFromExcel: { contains: query, mode: "insensitive" } },
         { jobName: { contains: query, mode: "insensitive" } },
         { client: { displayName: { contains: query, mode: "insensitive" } } },
+        {
+          assignments: {
+            some: {
+              active: true,
+              assignmentRole: { in: ["MANAGER", "SUPERVISOR", "STAFF"] },
+              user: { name: { contains: query, mode: "insensitive" } },
+            },
+          },
+        },
       ],
     });
   }

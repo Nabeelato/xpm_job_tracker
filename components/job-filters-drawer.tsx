@@ -736,7 +736,7 @@ export function JobFilters({
               className="h-11 rounded-2xl border-slate-200 bg-slate-50 pl-10 shadow-none placeholder:text-slate-400 focus-visible:ring-slate-300"
               defaultValue={query}
               name="q"
-              placeholder="Search job no, client, or job name"
+              placeholder="Search job no., job name, client, manager, supervisor, or staff"
             />
           </div>
 
