@@ -13,12 +13,20 @@ type CommentItem = {
   user: { name: string | null };
 };
 
-export function JobComments({ jobId, comments }: { jobId: string; comments: CommentItem[] }) {
+export function JobComments({
+  jobId,
+  comments,
+  canComment = true,
+}: {
+  jobId: string;
+  comments: CommentItem[];
+  canComment?: boolean;
+}) {
   const [lightbox, setLightbox] = useState<{ images: string[]; index: number } | null>(null);
 
   return (
     <>
-      <JobCommentForm jobId={jobId} />
+      {canComment ? <JobCommentForm jobId={jobId} /> : null}
       <div className="space-y-3">
         {comments.length ? (
           comments.map((comment) => (

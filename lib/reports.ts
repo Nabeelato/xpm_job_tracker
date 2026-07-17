@@ -7,7 +7,7 @@ import { availableJobsWhere, visibleJobsWhere, type AppSessionUser } from "@/lib
 
 export const REPORT_EXPORT_LIMIT = 25_000;
 
-export type JobReportScope = "report" | "visible";
+export type JobReportScope = "all" | "report" | "visible";
 
 export type ReportWorkbookMeta = {
   title: string;
@@ -165,7 +165,7 @@ export function buildJobReportWhere(
 ): Prisma.JobWhereInput {
   const scope = options.scope ?? "report";
   const and: Prisma.JobWhereInput[] = [
-    scope === "visible" ? visibleJobsWhere(user) : reportScopeWhere(user),
+    scope === "all" ? {} : scope === "visible" ? visibleJobsWhere(user) : reportScopeWhere(user),
   ];
 
   const query = param(params, "q")?.trim();

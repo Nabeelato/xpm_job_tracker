@@ -1,10 +1,11 @@
 import Link from "next/link";
-import { Archive, UserPlus } from "lucide-react";
+import { Archive, TriangleAlert, UserPlus } from "lucide-react";
 import { DepartmentBadge } from "@/components/department-badge";
 import { JobStateIdleTime } from "@/components/job-idle-time";
 import { PageHeader } from "@/components/page-header";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
@@ -12,8 +13,9 @@ import { JobComments } from "@/components/job-comments";
 import { assignmentRoles, bookkeepingByLabels, bookkeepingSoftwareLabels, internalStatuses, userRoles } from "@/lib/constants";
 import { canAssignUserToRole, canManageJobAssignmentRole } from "@/lib/assignment-permissions";
 import { prisma } from "@/lib/db";
+import { detectDepartmentMismatch } from "@/lib/import/department";
 import { summarizeJobStateTime } from "@/lib/job-state";
-import { assertCanViewJob, canArchiveJobs, canAssignJobs, requireUser, visibleJobsWhere } from "@/lib/rbac";
+import { canArchiveJobs, canAssignJobs, canInteractWithJob, requireUser } from "@/lib/rbac";
 import { formatDateTime, formatElapsedTime, titleCaseEnum } from "@/lib/utils";
 import { updateClientBookkeepingAction } from "@/app/(app)/clients/actions";
 import {
@@ -28,7 +30,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
   const user = await requireUser();
   const { id } = await params;
   const job = await prisma.job.findFirst({
-    where: { id, AND: [visibleJobsWhere(user)] },
+    where: { id },
     select: {
       id: true,
       jobIdFromExcel: true,
@@ -86,7 +88,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
   });
 
   if (!job) return null;
-  assertCanViewJob(user, {
+  const canInteract = canInteractWithJob(user, {
     assignments: job.assignments.map((assignment) => ({
       userId: assignment.userId,
       assignmentRole: assignment.assignmentRole,
@@ -95,6 +97,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
     jobStateNumber: job.jobStateNumber,
     archived: job.archived,
   });
+  const departmentWarningCode = detectDepartmentMismatch(job.jobName, job.finalDepartment.code);
 
   const [departments, users] = await Promise.all([
     prisma.department.findMany({ where: { active: true }, orderBy: { code: "asc" }, select: { id: true, name: true } }),
@@ -119,6 +122,23 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
   return (
     <>
       <PageHeader title={job.jobIdFromExcel} description={job.jobName} />
+      {departmentWarningCode ? (
+        <div className="mb-5 flex items-start gap-3 rounded-lg border border-orange-200 bg-orange-50 p-4 text-orange-900">
+          <TriangleAlert className="mt-0.5 h-5 w-5 shrink-0" />
+          <div>
+            <div className="font-medium">Possible department mismatch</div>
+            <div className="mt-1 flex flex-wrap items-center gap-2 text-sm">
+              <span>The job name suggests</span>
+              <Badge variant="warning">
+                {departmentWarningCode === "SOFTWARE_BK" ? "Software BK" : departmentWarningCode}
+              </Badge>
+              <span>but the current department is</span>
+              <DepartmentBadge code={job.finalDepartment.code} />
+              <span>Review the department before changing it.</span>
+            </div>
+          </div>
+        </div>
+      ) : null}
       <div className="grid gap-5 xl:grid-cols-[1fr_360px]">
         <div className="space-y-5">
           <Card>
@@ -252,7 +272,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
               <CardTitle>Comments</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <JobComments comments={job.comments} jobId={job.id} />
+              <JobComments canComment={canInteract} comments={job.comments} jobId={job.id} />
             </CardContent>
           </Card>
 
@@ -283,24 +303,26 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
         </div>
 
         <div className="space-y-5">
-          <Card>
-            <CardHeader>
-              <CardTitle>Update Status</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <form action={updateInternalStatusAction} className="space-y-3">
-                <input name="jobId" type="hidden" value={job.id} />
-                <Select defaultValue={job.internalStatus} name="internalStatus">
-                  {internalStatuses.map((status) => (
-                    <option key={status} value={status}>
-                      {titleCaseEnum(status)}
-                    </option>
-                  ))}
-                </Select>
-                <Button type="submit">Save status</Button>
-              </form>
-            </CardContent>
-          </Card>
+          {canInteract ? (
+            <Card>
+              <CardHeader>
+                <CardTitle>Update Status</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <form action={updateInternalStatusAction} className="space-y-3">
+                  <input name="jobId" type="hidden" value={job.id} />
+                  <Select defaultValue={job.internalStatus} name="internalStatus">
+                    {internalStatuses.map((status) => (
+                      <option key={status} value={status}>
+                        {titleCaseEnum(status)}
+                      </option>
+                    ))}
+                  </Select>
+                  <Button type="submit">Save status</Button>
+                </form>
+              </CardContent>
+            </Card>
+          ) : null}
 
           {canManageAssignments ? (
             <Card>
@@ -370,7 +392,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
             </Card>
           ) : null}
 
-          {canAssignJobs(user.role) ? (
+          {canInteract && canAssignJobs(user.role) ? (
             <Card>
               <CardHeader>
                 <CardTitle>Department Correction</CardTitle>
@@ -393,7 +415,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
             </Card>
           ) : null}
 
-          {canAssignJobs(user.role) ? (
+          {canInteract && canAssignJobs(user.role) ? (
             <Card>
               <CardHeader>
                 <CardTitle>Bookkeeping Software</CardTitle>
@@ -424,7 +446,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
             </Card>
           ) : null}
 
-          {canArchiveJobs(user.role) ? (
+          {canInteract && canArchiveJobs(user.role) ? (
             <Card>
               <CardHeader>
                 <CardTitle>Archive</CardTitle>

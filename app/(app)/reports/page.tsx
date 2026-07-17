@@ -17,7 +17,7 @@ import {
 } from "@/lib/constants";
 import { prisma } from "@/lib/db";
 import { reportScopeWhere, reportUserScopeWhere } from "@/lib/reports";
-import { requireUser } from "@/lib/rbac";
+import { requireRole } from "@/lib/rbac";
 import { cn } from "@/lib/utils";
 
 type Option = { value: string; label: string };
@@ -66,7 +66,7 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 }
 
 export default async function ReportsPage() {
-  const user = await requireUser();
+  const user = await requireRole(["ADMIN"]);
   const reportWhere = reportScopeWhere(user);
   const userWhere = reportUserScopeWhere(user);
   const canExportImports = user.role === "ADMIN" || user.role === "MANAGER" || user.departmentCode === "QC";

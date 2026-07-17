@@ -1,13 +1,15 @@
 "use client";
 
 import { usePathname } from "next/navigation";
+import type { UserRole } from "@prisma/client";
 import { navSections } from "@/components/nav-config";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
-export function NavLinks({ unreadCount }: { unreadCount: number }) {
+export function NavLinks({ role, unreadCount }: { role: UserRole; unreadCount: number }) {
   const pathname = usePathname();
-  const allHrefs = navSections.flatMap((s) => s.items.map((i) => i.href));
+  const visibleSections = navSections.filter((section) => !section.roles || section.roles.includes(role));
+  const allHrefs = visibleSections.flatMap((section) => section.items.map((item) => item.href));
 
   function isActive(href: string) {
     if (pathname === href) return true;
@@ -19,7 +21,7 @@ export function NavLinks({ unreadCount }: { unreadCount: number }) {
 
   return (
     <>
-      {navSections.map((section) => (
+      {visibleSections.map((section) => (
         <div className="space-y-1" key={section.label}>
           <div className="px-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
             {section.label}

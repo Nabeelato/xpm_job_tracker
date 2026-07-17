@@ -1,10 +1,11 @@
 import Link from "next/link";
 import { Menu, X } from "lucide-react";
+import type { UserRole } from "@prisma/client";
 import { NavLinks } from "@/components/nav-links";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-export function MobileNav({ unreadCount }: { unreadCount: number }) {
+export function MobileNav({ role, unreadCount }: { role: UserRole; unreadCount: number }) {
   return (
     <div className="lg:hidden">
       <input className="peer sr-only" id="mobile-nav-toggle" type="checkbox" />
@@ -31,8 +32,8 @@ export function MobileNav({ unreadCount }: { unreadCount: number }) {
               <X className="h-5 w-5" />
             </label>
           </div>
-          <nav className="flex-1 space-y-4 overflow-y-auto p-3">
-            <NavLinks unreadCount={unreadCount} />
+          <nav className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain p-3">
+            <NavLinks role={role} unreadCount={unreadCount} />
           </nav>
         </div>
       </div>

@@ -108,17 +108,23 @@ export function canWriteDiary(user: AppSessionUser) {
   return user.role === "ADMIN" || user.role === "MANAGER" || user.departmentCode === "QC";
 }
 
-export function assertCanViewJob(user: AppSessionUser, job: {
+type InteractiveJob = {
   assignments: Array<{ userId: string; assignmentRole: AssignmentRole }>;
   finalDepartmentId?: string;
   jobStateNumber?: number | null;
   archived?: boolean;
-}) {
+};
+
+export function canInteractWithJob(user: AppSessionUser, job: InteractiveJob) {
   if (user.role === "ADMIN" || user.departmentCode === "QC") return true;
   if (job.assignments.some((assignment) => assignment.userId === user.id)) return true;
-  if (
+  return Boolean(
     !job.archived && job.jobStateNumber && [3, 4, 5, 6].includes(job.jobStateNumber) &&
     !job.assignments.some((assignment) => assignment.assignmentRole === assignmentRoleForUser(user.role))
-  ) return true;
+  );
+}
+
+export function assertCanViewJob(user: AppSessionUser, job: InteractiveJob) {
+  if (canInteractWithJob(user, job)) return true;
   redirect("/jobs/my");
 }

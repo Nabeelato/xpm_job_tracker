@@ -8,8 +8,8 @@ export default function JobsPage({
   return (
     <JobListPage
       basePath="/jobs"
-      description="All visible jobs with department, state, and assignee filters."
-      preset={{ tabs: { assignees: true, departments: true, stateSets: true, states: "all" } }}
+      description="All jobs across every department, with state and assignee filters."
+      preset={{ allJobs: true, tabs: { assignees: true, departments: true, stateSets: true, states: "all" } }}
       searchParams={searchParams}
       title="All Jobs"
     />

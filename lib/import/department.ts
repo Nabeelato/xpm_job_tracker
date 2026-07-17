@@ -100,3 +100,17 @@ export function detectDepartment(jobName: unknown, clientName?: unknown): Depart
   }
   return "UNCLASSIFIED";
 }
+
+export function detectDepartmentMismatch(
+  jobName: unknown,
+  currentDepartmentCode: string | null | undefined,
+): DepartmentCode | null {
+  if (!currentDepartmentCode || currentDepartmentCode === "QC") return null;
+
+  const expectedDepartmentCode = detectDepartment(jobName);
+  if (expectedDepartmentCode === "UNCLASSIFIED" || expectedDepartmentCode === currentDepartmentCode) {
+    return null;
+  }
+
+  return expectedDepartmentCode;
+}

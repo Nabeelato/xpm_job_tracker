@@ -1,4 +1,5 @@
 import type { LucideIcon } from "lucide-react";
+import type { UserRole } from "@prisma/client";
 import {
   BarChart3,
   Bell,
@@ -24,6 +25,7 @@ export type NavItem = {
 export type NavSection = {
   label: string;
   items: NavItem[];
+  roles?: UserRole[];
 };
 
 export const navSections: NavSection[] = [
@@ -55,6 +57,7 @@ export const navSections: NavSection[] = [
   },
   {
     label: "Admin",
+    roles: ["ADMIN"],
     items: [
       { href: "/users", label: "Users", icon: Users },
       { href: "/reports", label: "Reports", icon: BarChart3 },

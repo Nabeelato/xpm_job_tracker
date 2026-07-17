@@ -59,7 +59,8 @@ export async function GET(req: NextRequest) {
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const params = req.nextUrl.searchParams;
-  const scope: JobReportScope = params.get("scope") === "visible" ? "visible" : "report";
+  const requestedScope = params.get("scope");
+  const scope: JobReportScope = requestedScope === "all" ? "all" : requestedScope === "visible" ? "visible" : "report";
   const where = buildJobReportWhere(params, user, { scope });
   const total = await prisma.job.count({ where });
 
@@ -112,7 +113,10 @@ export async function GET(req: NextRequest) {
     title: "Jobs Detail Report",
     generatedBy: user.name,
     filters: [
-      { label: "Scope", value: scope === "visible" ? "Current screen visibility" : "Hierarchy report scope" },
+      {
+        label: "Scope",
+        value: scope === "all" ? "All jobs" : scope === "visible" ? "Current screen visibility" : "Hierarchy report scope",
+      },
       { label: "Search", value: params.get("q") },
       { label: "Department", value: joinParamValues(params, "department") },
       { label: "Staff", value: joinParamValues(params, "staffUserId", assignmentFilterLabel) },

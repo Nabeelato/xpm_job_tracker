@@ -3,13 +3,14 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, TriangleAlert } from "lucide-react";
 import { formatDistanceToNowStrict } from "date-fns";
 import type { BookkeepingBy, BookkeepingSoftware, ClientCategory } from "@prisma/client";
 import { bookkeepingSoftwareLabels } from "@/lib/constants";
 import { AssignJobsModal } from "@/components/assign-jobs-modal";
 import { AssignSingleJobModal } from "@/components/assign-single-job-modal";
 import { DepartmentBadge } from "@/components/department-badge";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { cn, formatDateTime, formatElapsedMilliseconds, titleCaseEnum } from "@/lib/utils";
@@ -34,6 +35,7 @@ export type JobRow = {
   bookkeepingBy: BookkeepingBy | null;
   jobName: string;
   departmentCode: string;
+  departmentWarningCode: string | null;
   xpmState: string | null;
   jobStateNumber: number | null;
   stateEnteredAt: Date | null;
@@ -337,7 +339,19 @@ export function JobsTableClient({
                   </TableCell>
                   <TableCell className="max-w-md">{job.jobName}</TableCell>
                   <TableCell>
-                    <DepartmentBadge code={job.departmentCode} />
+                    <div className="space-y-1.5">
+                      <DepartmentBadge code={job.departmentCode} />
+                      {job.departmentWarningCode ? (
+                        <Badge
+                          className="flex w-fit gap-1"
+                          title={`The job name suggests ${job.departmentWarningCode}, but the current department is ${job.departmentCode}.`}
+                          variant="warning"
+                        >
+                          <TriangleAlert className="h-3 w-3" />
+                          Expected {job.departmentWarningCode === "SOFTWARE_BK" ? "Software BK" : job.departmentWarningCode}
+                        </Badge>
+                      ) : null}
+                    </div>
                   </TableCell>
                   <TableCell className="max-w-xs text-muted-foreground">{job.xpmState ?? "-"}</TableCell>
                   {showStateAge ? (

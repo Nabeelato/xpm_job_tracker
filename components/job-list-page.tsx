@@ -9,6 +9,7 @@ import { Pagination } from "@/components/pagination";
 import { buttonVariants } from "@/components/ui/button";
 import { managerUserRoles } from "@/lib/constants";
 import { prisma } from "@/lib/db";
+import { detectDepartmentMismatch } from "@/lib/import/department";
 import { summarizeJobStateTime, type JobStateGroup } from "@/lib/job-state";
 import { buildJobReportOrderBy, buildJobReportWhere } from "@/lib/reports";
 import { getSystemSetting } from "@/lib/settings";
@@ -20,6 +21,7 @@ type Preset = {
   stateSet?: "main" | "workflow" | "other";
   missing?: boolean;
   myJobs?: boolean;
+  allJobs?: boolean;
   availableJobs?: boolean;
   queueVacancyFilters?: boolean;
   queueDepartmentTabs?: boolean;
@@ -73,7 +75,8 @@ export async function JobListPage({
   const filterParams = paramsWithPreset(pageParams, effectivePreset);
   const sortBy = searchParam(rawParams, "sortBy");
   const sortDir = (searchParam(rawParams, "sortDir") ?? "asc") as "asc" | "desc";
-  const where = buildJobReportWhere(filterParams, user, { scope: "visible" });
+  const dataScope = effectivePreset.allJobs ? "all" : "visible";
+  const where = buildJobReportWhere(filterParams, user, { scope: dataScope });
 
   const [showAssignmentAge, showStateAge] = await Promise.all([
     getSystemSetting("showAssignmentAge").then((value) => value === "true"),
@@ -186,7 +189,7 @@ export async function JobListPage({
 
   const exportParams = new URLSearchParams(filterParams);
   exportParams.delete("page");
-  exportParams.set("scope", "visible");
+  exportParams.set("scope", dataScope);
   const exportHref = `/api/reports/jobs/export${exportParams.toString() ? `?${exportParams.toString()}` : ""}`;
 
   return (
@@ -293,6 +296,7 @@ export async function JobListPage({
               bookkeepingBy: j.client.bookkeepingBy,
               jobName: j.jobName,
               departmentCode: j.finalDepartment.code,
+              departmentWarningCode: detectDepartmentMismatch(j.jobName, j.finalDepartment.code),
               xpmState: j.xpmState,
               jobStateNumber: j.jobStateNumber,
               stateEnteredAt: j.stateEnteredAt,

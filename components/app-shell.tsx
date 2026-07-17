@@ -10,20 +10,20 @@ export async function AppShell({ user, children }: { user: AppSessionUser; child
 
   return (
     <div className="min-h-screen bg-background">
-      <aside className="fixed inset-y-0 left-0 hidden w-64 border-r bg-white lg:block">
-        <div className="flex h-16 items-center border-b px-5">
+      <aside className="fixed inset-y-0 left-0 hidden w-64 flex-col overflow-hidden border-r bg-white lg:flex">
+        <div className="flex h-16 shrink-0 items-center border-b px-5">
           <Link className="text-base font-semibold" href="/dashboard">
             TI Job Management System
           </Link>
         </div>
-        <nav className="space-y-4 p-3">
-          <NavLinks unreadCount={unreadCount} />
+        <nav className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain p-3">
+          <NavLinks role={user.role} unreadCount={unreadCount} />
         </nav>
       </aside>
       <div className="lg:pl-64">
         <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b bg-white px-4 lg:px-6">
           <div className="flex items-center gap-3">
-            <MobileNav unreadCount={unreadCount} />
+            <MobileNav role={user.role} unreadCount={unreadCount} />
             <Link className="font-semibold lg:hidden" href="/dashboard">
               TI Job Management System
             </Link>

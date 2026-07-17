@@ -4,7 +4,7 @@ import { PageHeader } from "@/components/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { prisma } from "@/lib/db";
-import { requireUser } from "@/lib/rbac";
+import { requireRole } from "@/lib/rbac";
 import { reportScopeWhere, reportUserScopeWhere } from "@/lib/reports";
 
 export default async function AssignmentHistoryPage({
@@ -12,7 +12,7 @@ export default async function AssignmentHistoryPage({
 }: {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const user = await requireUser();
+  const user = await requireRole(["ADMIN"]);
 
   const raw = (await searchParams) ?? {};
   const fromDate = typeof raw.from === "string" && raw.from ? raw.from : undefined;
