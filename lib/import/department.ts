@@ -105,7 +105,9 @@ export function detectDepartmentMismatch(
   jobName: unknown,
   currentDepartmentCode: string | null | undefined,
 ): DepartmentCode | null {
-  if (!currentDepartmentCode || currentDepartmentCode === "QC") return null;
+  if (!currentDepartmentCode || currentDepartmentCode === "QC" || currentDepartmentCode === "SOFTWARE_BK") {
+    return null;
+  }
 
   const expectedDepartmentCode = detectDepartment(jobName);
   if (expectedDepartmentCode === "UNCLASSIFIED" || expectedDepartmentCode === currentDepartmentCode) {

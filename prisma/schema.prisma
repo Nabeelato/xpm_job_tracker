@@ -91,6 +91,13 @@ enum BookkeepingBy {
   CLIENT
 }
 
+enum StaffStatusEndReason {
+  USER_SWITCHED
+  USER_CLEARED
+  JOB_LEFT_WORKFLOW
+  ASSIGNMENT_ENDED
+}
+
 model User {
   id                  String            @id @default(cuid())
   name                String
@@ -115,6 +122,7 @@ model User {
   actedNotifications    Notification[]  @relation("NotificationActor")
   authoredDiaryEntries  DiaryEntry[]    @relation("DiaryAuthor")
   receivedDiaryEntries  DiaryEntry[]    @relation("DiaryRecipient")
+  statusSessions        StaffStatusSession[] @relation("StaffStatusUser")
 
   @@index([departmentId])
   @@index([supervisorId])
@@ -186,6 +194,7 @@ model Job {
   stateTimeRecords               JobStateTimeRecord[]
   comments                       JobComment[]
   notifications                  Notification[]
+  staffStatusSessions            StaffStatusSession[]
 
   @@index([clientId])
   @@index([finalDepartmentId])
@@ -214,6 +223,23 @@ model JobStateTimeRecord {
   @@index([jobId, stateNumber])
   @@index([jobId, exitedAt])
   @@map("job_state_time_records")
+}
+
+model StaffStatusSession {
+  id        String                @id @default(cuid())
+  userId    String                @map("user_id")
+  user      User                  @relation("StaffStatusUser", fields: [userId], references: [id], onDelete: Cascade)
+  jobId     String                @map("job_id")
+  job       Job                   @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  startedAt DateTime              @default(now()) @map("started_at")
+  endedAt   DateTime?             @map("ended_at")
+  endReason StaffStatusEndReason? @map("end_reason")
+  createdAt DateTime              @default(now()) @map("created_at")
+
+  @@index([userId, endedAt])
+  @@index([userId, startedAt])
+  @@index([jobId, endedAt])
+  @@map("staff_status_sessions")
 }
 
 model JobAssignment {

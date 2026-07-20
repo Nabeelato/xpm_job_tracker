@@ -1,6 +1,7 @@
 import type { LucideIcon } from "lucide-react";
 import type { UserRole } from "@prisma/client";
 import {
+  Activity,
   BarChart3,
   Bell,
   BookOpen,
@@ -53,6 +54,13 @@ export const navSections: NavSection[] = [
       { href: "/imports", label: "Imports", icon: FileUp },
       { href: "/notifications", label: "Notifications", icon: Bell },
       { href: "/diary", label: "Diary", icon: BookOpen },
+    ],
+  },
+  {
+    label: "Team",
+    roles: ["ADMIN", "MANAGER", "SUPERVISOR"],
+    items: [
+      { href: "/team-status", label: "Staff Status", icon: Activity },
     ],
   },
   {
