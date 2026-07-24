@@ -1,22 +1,16 @@
 import {
-  AssignmentRole,
-  AssignmentSource,
   ChangeSource,
   ImportRowAction,
   ImportStateComparisonCategory,
   ImportStatus,
   InternalStatus,
-  type BookkeepingBy,
-  type ClientCategory,
   type Department,
   type Prisma,
 } from "@prisma/client";
 import { prisma } from "@/lib/db";
-import { detectClientCategoryFromManager, detectDepartment, detectDepartmentFromManager } from "@/lib/import/department";
+import { detectDepartment, detectDepartmentFromManager } from "@/lib/import/department";
 import { normalizeClientName, normalizeHeader } from "@/lib/import/normalize";
 import { isTimedJobState, jobStateTimerTransition, nextStateEnteredAt, parseJobStateNumber } from "@/lib/job-state";
-import { departmentDefaultManagerNames } from "@/lib/constants";
-import { getSystemSetting } from "@/lib/settings";
 
 const rawAliases = {
   priority: ["[Job] Priority", "priority"],
@@ -65,27 +59,11 @@ function departmentMap(departments: Department[]) {
   return new Map(departments.map((department) => [department.code, department]));
 }
 
-function mergeClientCategoryTarget(
-  current: ClientCategory | undefined,
-  next: ClientCategory | null,
-): ClientCategory | undefined {
-  if (!next) return current;
-  if (next === "SOFTWARE") return "SOFTWARE";
-  return current ?? "MANUAL";
-}
-
-function mergeClientBookkeepingByTarget(current: BookkeepingBy | undefined, next: BookkeepingBy | null): BookkeepingBy | undefined {
-  if (!next) return current;
-  return next;
-}
-
 export async function applyImportBatch(
   importBatchId: string,
   changedById: string,
   options: { allowOlderXpmDownloadedAt?: boolean } = {},
 ) {
-  const classifyClientsFromSourceManager =
-    (await getSystemSetting("classifyClientsFromSourceManager")) !== "false";
   return prisma.$transaction(
     async (tx) => {
       const batch = await tx.importBatch.findUnique({
@@ -111,25 +89,6 @@ export async function applyImportBatch(
       }
 
       const departments = departmentMap(await tx.department.findMany());
-      const defaultManagerEntries = Object.entries(departmentDefaultManagerNames);
-      const defaultManagerUsers = await tx.user.findMany({
-        where: {
-          active: true,
-          role: { in: ["ADMIN", "MANAGER"] },
-          name: { in: defaultManagerEntries.flatMap(([, names]) => names) },
-        },
-        select: { id: true, name: true },
-      });
-      const defaultManagerIdByDepartment = new Map(
-        defaultManagerEntries.flatMap(([code, names]) => {
-          const matched = defaultManagerUsers.find(
-            (candidate) => names.some(
-              (name) => candidate.name.trim().toLocaleLowerCase() === name.toLocaleLowerCase(),
-            ),
-          );
-          return matched ? [[code, matched.id] as const] : [];
-        }),
-      );
 
       const importableRows = batch.rows.filter(
         (row) =>
@@ -147,8 +106,6 @@ export async function applyImportBatch(
         include: { client: true },
       });
       const jobByExcelId = new Map(existingJobs.map((job) => [job.jobIdFromExcel, job]));
-      const clientCategoryTargets = new Map<string, ClientCategory>();
-      const clientBookkeepingByTargets = new Map<string, BookkeepingBy>();
 
       const logs: Prisma.JobChangeLogCreateManyInput[] = [];
       const now = new Date();
@@ -174,10 +131,6 @@ export async function applyImportBatch(
         const sourceManagerName = readRawValue(raw, rawAliases.manager);
         const sourcePartnerName = readRawValue(raw, rawAliases.partner);
         const sourceManagerDepartmentCode = detectDepartmentFromManager(sourceManagerName);
-        const sourceClientCategory = classifyClientsFromSourceManager
-          ? detectClientCategoryFromManager(sourceManagerName)
-          : null;
-        const sourceClientBookkeepingBy = sourceClientCategory === "MANUAL" ? "FIRM" : null;
         // Source manager takes priority when it matches a department rule.
         const detectedCode =
           sourceManagerDepartmentCode ??
@@ -221,12 +174,6 @@ export async function applyImportBatch(
           }
           jobByExcelId.set(row.detectedJobId, { ...created, client });
           addLog(logs, created.id, importBatchId, changedById, "job_created", null, row.detectedJobId);
-          const currentTarget = clientCategoryTargets.get(client.id);
-          const mergedTarget = mergeClientCategoryTarget(currentTarget, sourceClientCategory);
-          if (mergedTarget) clientCategoryTargets.set(client.id, mergedTarget);
-          const currentBookkeepingTarget = clientBookkeepingByTargets.get(client.id);
-          const mergedBookkeepingTarget = mergeClientBookkeepingByTarget(currentBookkeepingTarget, sourceClientBookkeepingBy);
-          if (mergedBookkeepingTarget) clientBookkeepingByTargets.set(client.id, mergedBookkeepingTarget);
           continue;
         }
 
@@ -300,74 +247,6 @@ export async function applyImportBatch(
           });
         }
         jobByExcelId.set(row.detectedJobId, { ...updated, client });
-        const currentTarget = clientCategoryTargets.get(client.id);
-        const mergedTarget = mergeClientCategoryTarget(currentTarget, sourceClientCategory);
-        if (mergedTarget) clientCategoryTargets.set(client.id, mergedTarget);
-        const currentBookkeepingTarget = clientBookkeepingByTargets.get(client.id);
-        const mergedBookkeepingTarget = mergeClientBookkeepingByTarget(currentBookkeepingTarget, sourceClientBookkeepingBy);
-        if (mergedBookkeepingTarget) clientBookkeepingByTargets.set(client.id, mergedBookkeepingTarget);
-      }
-
-      const importedJobs = await tx.job.findMany({
-        where: { jobIdFromExcel: { in: importJobIds } },
-        select: {
-          id: true,
-          finalDepartment: { select: { code: true } },
-          assignments: {
-            where: { active: true, assignmentRole: AssignmentRole.MANAGER },
-            select: { id: true },
-          },
-        },
-      });
-      for (const job of importedJobs) {
-        if (job.assignments.length) continue;
-        const managerId = defaultManagerIdByDepartment.get(job.finalDepartment.code);
-        if (!managerId) continue;
-        await tx.jobAssignment.create({
-          data: {
-            jobId: job.id,
-            userId: managerId,
-            assignmentRole: AssignmentRole.MANAGER,
-            assignmentSource: AssignmentSource.DEPARTMENT_AUTO,
-            assignedById: changedById,
-          },
-        });
-        await tx.job.updateMany({
-          where: { id: job.id, internalStatus: InternalStatus.UNASSIGNED },
-          data: { internalStatus: InternalStatus.ASSIGNED },
-        });
-        addLog(logs, job.id, importBatchId, changedById, "department_auto_assignment", null, managerId);
-      }
-
-      const clientsToUpdate = clientCategoryTargets.size
-        ? await tx.client.findMany({
-            where: { id: { in: [...clientCategoryTargets.keys()] } },
-            select: { id: true, category: true, bookkeepingBy: true },
-          })
-        : [];
-
-      for (const client of clientsToUpdate) {
-        const targetCategory = clientCategoryTargets.get(client.id);
-        const targetBookkeepingBy = clientBookkeepingByTargets.get(client.id);
-        const updateData: { category?: ClientCategory; bookkeepingBy?: BookkeepingBy | null; bookkeepingSoftware?: null } = {};
-
-        if (targetCategory && client.category !== targetCategory) {
-          updateData.category = targetCategory;
-        }
-
-        if (targetCategory === "MANUAL") {
-          updateData.bookkeepingBy = "FIRM";
-          updateData.bookkeepingSoftware = null;
-        } else if (targetBookkeepingBy && client.bookkeepingBy !== targetBookkeepingBy) {
-          updateData.bookkeepingBy = targetBookkeepingBy;
-        }
-
-        if (Object.keys(updateData).length > 0) {
-          await tx.client.update({
-            where: { id: client.id },
-            data: updateData,
-          });
-        }
       }
 
       const missingJobs = await tx.job.findMany({

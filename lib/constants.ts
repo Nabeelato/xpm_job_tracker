@@ -56,13 +56,6 @@ export const userRoles: UserRole[] = ["ADMIN", "MANAGER", "SUPERVISOR", "STAFF"]
 // Admins remain eligible anywhere the app needs a manager-style assignee.
 export const managerUserRoles: UserRole[] = ["ADMIN", "MANAGER"];
 
-// Resolved by name so production and development user IDs can differ safely.
-export const departmentDefaultManagerNames: Partial<Record<(typeof departments)[number], readonly string[]>> = {
-  VAT: ["Faizan Ali"],
-  AFS: ["Maaz Imran"],
-  SOFTWARE_BK: ["Irfan Tanwir", "Irfan Tanvir"],
-};
-
 export const clientCategories: ClientCategory[] = ["SOFTWARE", "MANUAL"];
 
 export const clientCategoryLabels: Record<ClientCategory, string> = {

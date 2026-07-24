@@ -1,4 +1,3 @@
-import type { ClientCategory } from "@prisma/client";
 import { sanitizeText } from "@/lib/import/normalize";
 
 export type DepartmentCode = "VAT" | "SOFTWARE_BK" | "BK" | "AFS" | "QC" | "UNCLASSIFIED";
@@ -20,20 +19,6 @@ export function detectDepartmentFromManager(managerName: string | null | undefin
   const name = sanitizeText(managerName);
   for (const rule of managerRules) {
     if (rule.patterns.some((pattern) => pattern.test(name))) return rule.code;
-  }
-  return null;
-}
-
-const clientCategoryRules: Array<{ category: ClientCategory; patterns: RegExp[] }> = [
-  { category: "SOFTWARE", patterns: [irfanManagerPattern] },
-  { category: "MANUAL", patterns: [taahaManagerPattern] },
-];
-
-export function detectClientCategoryFromManager(managerName: string | null | undefined): ClientCategory | null {
-  if (!managerName) return null;
-  const name = sanitizeText(managerName);
-  for (const rule of clientCategoryRules) {
-    if (rule.patterns.some((pattern) => pattern.test(name))) return rule.category;
   }
   return null;
 }
