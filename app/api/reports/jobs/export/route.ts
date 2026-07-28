@@ -35,6 +35,13 @@ function clientCategoryFilterLabel(value: string | null | undefined) {
   return value;
 }
 
+function stateSetFilterLabel(value: string | null) {
+  if (value === "main") return "Main 03-06";
+  if (value === "workflow") return "Workflow 03-06";
+  if (value === "other") return "Other states";
+  return value;
+}
+
 function assignmentFilterLabel(value: string) {
   if (value === "unassigned") return "Unassigned";
   return value;
@@ -60,7 +67,12 @@ export async function GET(req: NextRequest) {
 
   const params = req.nextUrl.searchParams;
   const requestedScope = params.get("scope");
-  const scope: JobReportScope = requestedScope === "all" ? "all" : requestedScope === "visible" ? "visible" : "report";
+  const canExportAll = user.role === "ADMIN" || user.departmentCode === "QC";
+  const scope: JobReportScope = requestedScope === "all" && canExportAll
+    ? "all"
+    : requestedScope === "visible"
+      ? "visible"
+      : "report";
   const where = buildJobReportWhere(params, user, { scope });
   const total = await prisma.job.count({ where });
 
@@ -127,13 +139,13 @@ export async function GET(req: NextRequest) {
         label: "Job State",
         value:
           joinParamValues(params, "stateFilter", (value) => {
-            if (value === "main") return "Main 02-06";
+            if (value === "main") return "Main 03-06";
             if (value === "workflow") return "Workflow 03-06";
             if (value === "other") return "Other states";
             if (value === "completed") return "Completed";
             if (value === "cancelled") return "Cancelled";
             return value;
-          }) ?? joinParamValues(params, "jobStateNumber") ?? joinParamValues(params, "stateNumbers") ?? params.get("stateSet") ?? params.get("stateGroup"),
+          }) ?? joinParamValues(params, "jobStateNumber") ?? joinParamValues(params, "stateNumbers") ?? stateSetFilterLabel(params.get("stateSet")) ?? params.get("stateGroup"),
       },
       { label: "Assigned User", value: joinParamValues(params, "assignedUserId", (value) => (value === "unassigned" ? "Unassigned" : value)) },
       { label: "Missing", value: params.get("missing") },

@@ -135,8 +135,8 @@ export function DiaryForm({ users }: { users: User[] }) {
             )}
           </div>
 
-          <Button disabled={submitting} type="submit">
-            {submitting ? "Saving…" : "Add diary entry"}
+          <Button disabled={submitting} loading={submitting} loadingLabel="Saving…" type="submit">
+            Add diary entry
           </Button>
         </form>
       </CardContent>

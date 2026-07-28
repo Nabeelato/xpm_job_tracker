@@ -3,9 +3,9 @@ import { prisma } from "@/lib/db";
 import { detectDepartmentFromManager } from "@/lib/import/department";
 import { normalizeClientName } from "@/lib/import/normalize";
 import { parseImportFile } from "@/lib/import/parser";
-import { isMainState } from "@/lib/job-state";
+import { isMainState, workflowJobStateNumbers } from "@/lib/job-state";
 
-const departmentWorkflowStateNumbers = new Set([3, 4, 5, 6]);
+const departmentWorkflowStateNumbers = new Set(workflowJobStateNumbers);
 
 function sameNullable(a: string | null | undefined, b: string | null | undefined) {
   return (a ?? null) === (b ?? null);
@@ -107,7 +107,7 @@ export async function stageImportBatch(file: File, uploadedById: string, xpmDown
         action = ImportRowAction.NEW_JOB;
         newJobsCount += 1;
       } else {
-        const sourceManagerDepartmentCode = detectDepartmentFromManager(row.managerName);
+        const sourceManagerDepartmentCode = detectDepartmentFromManager(row.managerName, row.jobName);
         const shouldForceDepartment = sourceManagerDepartmentCode !== null;
         const effectiveDepartmentCode = sourceManagerDepartmentCode ?? row.detectedDepartmentCode;
         const autoDepartment = departmentByCode.get(effectiveDepartmentCode);

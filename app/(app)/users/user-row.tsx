@@ -17,7 +17,7 @@ import {
 } from "./actions";
 
 type Department = { id: string; name: string };
-type Supervisor = { id: string; name: string };
+type HierarchyParent = { id: string; name: string; role: string; departmentId: string | null };
 type TransferTarget = { id: string; name: string };
 
 export type UserRowData = {
@@ -34,13 +34,13 @@ export type UserRowData = {
 export function UserRow({
   user,
   departments,
-  supervisors,
+  hierarchyParents,
   transferTargets,
   currentUserId,
 }: {
   user: UserRowData;
   departments: Department[];
-  supervisors: Supervisor[];
+  hierarchyParents: HierarchyParent[];
   transferTargets: TransferTarget[];
   currentUserId: string;
 }) {
@@ -84,6 +84,13 @@ export function UserRow({
 
   const isSelf = user.id === currentUserId;
   const eligibleTargets = transferTargets.filter((t) => t.id !== user.id);
+  const eligibleParents = hierarchyParents.filter((parent) => {
+    if (parent.id === user.id || !draft.departmentId || parent.departmentId !== draft.departmentId) return false;
+    if (draft.role === "STAFF") return parent.role === "SUPERVISOR";
+    if (draft.role === "SUPERVISOR") return parent.role === "ADMIN" || parent.role === "MANAGER";
+    if (draft.role === "MANAGER") return parent.role === "ADMIN";
+    return false;
+  });
 
   function handleDeleteSubmit(e: React.FormEvent<HTMLFormElement>) {
     const assignmentNote =
@@ -150,6 +157,7 @@ export function UserRow({
             <Select name="role" onChange={(event) => setDraft((current) => ({
               ...current,
               role: event.target.value,
+              supervisorId: "",
             }))} value={draft.role}>
               {userRoles.map((role) => (
                 <option key={role} value={role}>
@@ -157,7 +165,11 @@ export function UserRow({
                 </option>
               ))}
             </Select>
-            <Select name="departmentId" onChange={(event) => setDraft((current) => ({ ...current, departmentId: event.target.value }))} value={draft.departmentId}>
+            <Select name="departmentId" onChange={(event) => setDraft((current) => ({
+              ...current,
+              departmentId: event.target.value,
+              supervisorId: "",
+            }))} value={draft.departmentId}>
               <option value="">No department</option>
               {departments.map((department) => (
                 <option key={department.id} value={department.id}>
@@ -167,11 +179,9 @@ export function UserRow({
             </Select>
             <Select name="supervisorId" onChange={(event) => setDraft((current) => ({ ...current, supervisorId: event.target.value }))} value={draft.supervisorId}>
               <option value="">No supervisor</option>
-              {supervisors
-                .filter((supervisor) => supervisor.id !== user.id)
-                .map((supervisor) => (
-                  <option key={supervisor.id} value={supervisor.id}>
-                    {supervisor.name}
+              {eligibleParents.map((parent) => (
+                  <option key={parent.id} value={parent.id}>
+                    {parent.name} ({parent.role})
                   </option>
                 ))}
             </Select>
@@ -179,8 +189,8 @@ export function UserRow({
               <input checked={draft.active} name="active" onChange={(event) => setDraft((current) => ({ ...current, active: event.target.checked }))} type="checkbox" />
               Active
             </label>
-            <Button disabled={updatePending} size="sm" type="submit" variant="outline">
-              {updatePending ? "Saving..." : "Save now"}
+            <Button disabled={updatePending} loading={updatePending} loadingLabel="Saving..." size="sm" type="submit" variant="outline">
+              Save now
             </Button>
           </div>
           <Input
@@ -219,13 +229,15 @@ export function UserRow({
             <input name="id" type="hidden" value={user.id} />
             <Button
               disabled={deletePending || isSelf}
+              loading={deletePending}
+              loadingLabel="Deleting..."
               size="sm"
               title={isSelf ? "You cannot delete your own account" : undefined}
               type="submit"
               variant="destructive"
             >
               <Trash2 className="mr-1 h-3.5 w-3.5" />
-              {deletePending ? "Deleting..." : "Delete"}
+              Delete
             </Button>
           </form>
         </div>
@@ -262,8 +274,8 @@ export function UserRow({
               Also deactivate {user.name} after transfer
             </label>
             <div className="flex gap-2">
-              <Button disabled={transferPending} size="sm" type="submit">
-                {transferPending ? "Transferring..." : "Confirm Transfer"}
+              <Button disabled={transferPending} loading={transferPending} loadingLabel="Transferring..." size="sm" type="submit">
+                Confirm Transfer
               </Button>
               <Button
                 onClick={() => setTransferOpen(false)}

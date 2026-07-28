@@ -12,11 +12,13 @@ import {
   type Prisma,
 } from "@prisma/client";
 import { prisma } from "@/lib/db";
-import { canManageJobAssignmentRole } from "@/lib/assignment-permissions";
+import { canAssignUserToRole, canManageJobAssignmentRole } from "@/lib/assignment-permissions";
+import { syncBkDepartmentConflictNotifications } from "@/lib/bk-department-conflicts";
+import { syncMissingAssignmentExceptionNotifications } from "@/lib/job-exceptions";
 import { createNotification } from "@/lib/notifications";
-import { workflowStateWhere } from "@/lib/job-state";
 import {
   assertCanViewJob,
+  availableJobsWhere,
   canArchiveJobs,
   canAssignJobs,
   assignmentRoleForUser,
@@ -28,10 +30,16 @@ function revalidateAllJobViews() {
   revalidatePath("/jobs", "layout");
   revalidatePath("/dashboard");
   revalidatePath("/reports");
+  revalidatePath("/reports/exceptions");
+  revalidatePath("/notifications");
 }
 
 function jobNotificationLabel(job: { jobName: string; client: { displayName: string } }) {
   return `${job.client.displayName} — ${job.jobName}`;
+}
+
+function isExclusiveAssignmentRole(role: AssignmentRole) {
+  return role === AssignmentRole.STAFF || role === AssignmentRole.SUPERVISOR;
 }
 
 async function getVisibleJobOrRedirect(jobId: string) {
@@ -108,7 +116,9 @@ export async function updateDepartmentAction(formData: FormData) {
     oldValue: job.finalDepartmentId,
     newValue: departmentId,
   });
+  await prisma.$transaction((tx) => syncBkDepartmentConflictNotifications(tx));
   revalidatePath(`/jobs/${job.id}`);
+  revalidatePath(`/clients/${job.clientId}`);
   revalidatePath("/jobs");
   revalidateAllJobViews();
 }
@@ -165,6 +175,10 @@ export async function archiveJobAction(formData: FormData) {
     where: { id: job.id },
     data: { archived: true, internalStatus: InternalStatus.ARCHIVED },
   });
+  await prisma.$transaction(async (tx) => {
+    await syncBkDepartmentConflictNotifications(tx);
+    await syncMissingAssignmentExceptionNotifications(tx);
+  });
   await logUserChange({
     job: { connect: { id: job.id } },
     changedBy: { connect: { id: user.id } },
@@ -197,6 +211,10 @@ export async function assignJobAction(formData: FormData) {
     prisma.user.findUnique({ where: { id: userId } }),
   ]);
   if (!job || !assignee?.active) return;
+  if (
+    isExclusiveAssignmentRole(assignmentRole) &&
+    job.assignments.some((assignment) => assignment.assignmentRole === assignmentRole && assignment.userId !== userId)
+  ) return;
   if (!canManageJobAssignmentRole({
     actor: user,
     assignee,
@@ -247,6 +265,9 @@ export async function assignJobAction(formData: FormData) {
         },
       });
     }
+    if (isExclusiveAssignmentRole(assignmentRole)) {
+      await syncMissingAssignmentExceptionNotifications(tx);
+    }
   });
 
   revalidatePath(`/jobs/${jobId}`);
@@ -258,6 +279,7 @@ export async function assignJobAction(formData: FormData) {
 export async function claimJobAction(formData: FormData) {
   const user = await requireUser();
   const jobId = String(formData.get("jobId") ?? "");
+  const skipExceptionSync = String(formData.get("skipExceptionSync") ?? "") === "true";
   if (!jobId) return;
 
   const assignmentRole = assignmentRoleForUser(user.role);
@@ -266,9 +288,7 @@ export async function claimJobAction(formData: FormData) {
     const job = await tx.job.findFirst({
       where: {
         id: jobId,
-        ...workflowStateWhere(),
-        archived: false,
-        assignments: { none: { active: true, assignmentRole } },
+        AND: [availableJobsWhere(user)],
       },
       select: {
         id: true,
@@ -313,6 +333,9 @@ export async function claimJobAction(formData: FormData) {
         jobId: job.id,
       });
     }
+    if (isExclusiveAssignmentRole(assignmentRole) && !skipExceptionSync) {
+      await syncMissingAssignmentExceptionNotifications(tx);
+    }
   }, { isolationLevel: "Serializable" });
 
   revalidatePath(`/jobs/${jobId}`);
@@ -325,6 +348,7 @@ export async function releaseOwnJobAction(formData: FormData) {
   const user = await requireUser();
   if (user.role !== "MANAGER" && user.role !== "SUPERVISOR") redirect("/dashboard");
   const jobId = String(formData.get("jobId") ?? "");
+  const skipExceptionSync = String(formData.get("skipExceptionSync") ?? "") === "true";
   if (!jobId) return;
   const assignmentRole = assignmentRoleForUser(user.role);
 
@@ -370,6 +394,9 @@ export async function releaseOwnJobAction(formData: FormData) {
         jobId,
       });
     }
+    if (isExclusiveAssignmentRole(assignmentRole) && !skipExceptionSync) {
+      await syncMissingAssignmentExceptionNotifications(tx);
+    }
   });
   revalidatePath("/jobs");
   revalidatePath("/jobs/my");
@@ -387,8 +414,12 @@ export async function bulkOwnJobsAction(formData: FormData) {
   for (const jobId of jobIds) {
     const item = new FormData();
     item.set("jobId", jobId);
+    item.set("skipExceptionSync", "true");
     if (operation === "CLAIM") await claimJobAction(item);
     else await releaseOwnJobAction(item);
+  }
+  if (user.role === "SUPERVISOR") {
+    await prisma.$transaction((tx) => syncMissingAssignmentExceptionNotifications(tx));
   }
   revalidatePath("/jobs");
   revalidatePath("/jobs/my");
@@ -423,6 +454,13 @@ export async function toggleJobAssignmentAction(formData: FormData) {
     assignment.userId === assigneeId && assignment.assignmentRole === assignmentRole,
   );
   if (Boolean(existing) === shouldAssign) return;
+  if (
+    shouldAssign &&
+    isExclusiveAssignmentRole(assignmentRole) &&
+    job.assignments.some(
+      (assignment) => assignment.assignmentRole === assignmentRole && assignment.userId !== assigneeId,
+    )
+  ) return;
   if (!canManageJobAssignmentRole({
     actor: user,
     assignee,
@@ -477,6 +515,9 @@ export async function toggleJobAssignmentAction(formData: FormData) {
         newValue: shouldAssign ? assignee.name : null,
       },
     });
+    if (isExclusiveAssignmentRole(assignmentRole)) {
+      await syncMissingAssignmentExceptionNotifications(tx);
+    }
   });
 
   revalidatePath(`/jobs/${jobId}`);
@@ -519,6 +560,7 @@ export async function setJobRoleAssignmentAction(formData: FormData) {
   if (alreadySet) return;
 
   const isTrackedRole = assignmentRole === AssignmentRole.SUPERVISOR || assignmentRole === AssignmentRole.STAFF;
+  const assignmentsToRemove = isTrackedRole ? existingForRole : [];
   const oldAssigneeName = isTrackedRole ? (existingForRole[0]?.user.name ?? null) : null;
 
   let assignee = null as Awaited<ReturnType<typeof prisma.user.findUnique>> | null;
@@ -531,7 +573,7 @@ export async function setJobRoleAssignmentAction(formData: FormData) {
     userId: activeUserId,
     assignmentRole: activeRole,
   }));
-  const canRemoveExisting = existingForRole.every((existing) => canManageJobAssignmentRole({
+  const canRemoveExisting = assignmentsToRemove.every((existing) => canManageJobAssignmentRole({
     actor: user,
     assignee: existing.user,
     assignmentRole,
@@ -558,12 +600,12 @@ export async function setJobRoleAssignmentAction(formData: FormData) {
   if (!canRemoveExisting || !canAssignNext || !canClearStaff) redirect("/dashboard");
 
   await prisma.$transaction(async (tx) => {
-    if (existingForRole.length) {
+    if (assignmentsToRemove.length) {
       await tx.jobAssignment.updateMany({
-        where: { id: { in: existingForRole.map((a) => a.id) } },
+        where: { id: { in: assignmentsToRemove.map((a) => a.id) } },
         data: { active: false },
       });
-      for (const prev of existingForRole) {
+      for (const prev of assignmentsToRemove) {
         await createNotification(tx, {
           recipientId: prev.userId,
           actorId: user.id,
@@ -623,6 +665,9 @@ export async function setJobRoleAssignmentAction(formData: FormData) {
         where: { id: job.id },
         data: { internalStatus: InternalStatus.ASSIGNED },
       });
+    }
+    if (isTrackedRole) {
+      await syncMissingAssignmentExceptionNotifications(tx);
     }
   });
 
@@ -684,6 +729,9 @@ export async function deactivateAssignmentAction(formData: FormData) {
       href: `/jobs/${assignment.jobId}`,
       jobId: assignment.jobId,
     });
+    if (isExclusiveAssignmentRole(assignment.assignmentRole)) {
+      await syncMissingAssignmentExceptionNotifications(tx);
+    }
   });
   await logUserChange({
     job: { connect: { id: assignment.jobId } },
@@ -724,13 +772,7 @@ export async function bulkAssignJobRolesAction(formData: FormData) {
     ? await prisma.user.findUnique({ where: { id: targetUserId } })
     : null;
   if (operation === "ASSIGN") {
-    if (!targetUser?.active || !role || !canManageJobAssignmentRole({
-      actor: user,
-      assignee: targetUser,
-      assignmentRole: role,
-      activeAssignments: [],
-      operation: "ASSIGN",
-    })) return;
+    if (!targetUser?.active || !role || !canAssignUserToRole(user, targetUser, role)) return;
   }
 
   const jobs = await prisma.job.findMany({
@@ -744,9 +786,20 @@ export async function bulkAssignJobRolesAction(formData: FormData) {
   await prisma.$transaction(async (tx) => {
     for (const job of jobs) {
       if (operation === "ASSIGN" && role && targetUser) {
+        if (!canManageJobAssignmentRole({
+          actor: user,
+          assignee: targetUser,
+          assignmentRole: role,
+          activeAssignments: job.assignments,
+          operation: "ASSIGN",
+        })) continue;
         const alreadyAssigned = job.assignments.some((assignment) =>
           assignment.assignmentRole === role && assignment.userId === targetUser.id,
         );
+        const exclusiveRoleOccupied = isExclusiveAssignmentRole(role) && job.assignments.some(
+          (assignment) => assignment.assignmentRole === role && assignment.userId !== targetUser.id,
+        );
+        if (exclusiveRoleOccupied) continue;
         if (!alreadyAssigned) {
           await tx.jobAssignment.create({
             data: {
@@ -799,6 +852,9 @@ export async function bulkAssignJobRolesAction(formData: FormData) {
           data: { internalStatus: InternalStatus.UNASSIGNED },
         });
       }
+    }
+    if (!role || isExclusiveAssignmentRole(role)) {
+      await syncMissingAssignmentExceptionNotifications(tx);
     }
   });
 

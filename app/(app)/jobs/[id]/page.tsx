@@ -11,7 +11,7 @@ import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { JobComments } from "@/components/job-comments";
 import { assignmentRoles, bookkeepingByLabels, bookkeepingSoftwareLabels, internalStatuses, userRoles } from "@/lib/constants";
-import { canAssignUserToRole, canManageJobAssignmentRole } from "@/lib/assignment-permissions";
+import { canManageJobAssignmentRole } from "@/lib/assignment-permissions";
 import { prisma } from "@/lib/db";
 import { detectDepartmentMismatch } from "@/lib/import/department";
 import { summarizeJobStateTime } from "@/lib/job-state";
@@ -95,9 +95,10 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
     })),
     finalDepartmentId: job.finalDepartmentId,
     jobStateNumber: job.jobStateNumber,
+    xpmState: job.xpmState,
     archived: job.archived,
   });
-  const departmentWarningCode = detectDepartmentMismatch(job.jobName, job.finalDepartment.code);
+  const departmentWarningCode = detectDepartmentMismatch(job.jobName, job.finalDepartment.code, job.sourceManagerName);
 
   const [departments, users] = await Promise.all([
     prisma.department.findMany({ where: { active: true }, orderBy: { code: "asc" }, select: { id: true, name: true } }),
@@ -332,9 +333,13 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
               <CardContent className="space-y-4">
                 <div className="space-y-3">
                   {assignmentRoles.map((assignmentRole) => {
-                    const candidates = users.filter((candidate) =>
-                      canAssignUserToRole(user, candidate, assignmentRole),
-                    );
+                    const candidates = users.filter((candidate) => canManageJobAssignmentRole({
+                      actor: user,
+                      assignee: candidate,
+                      assignmentRole,
+                      activeAssignments: activeAssignmentRefs,
+                      operation: "ASSIGN",
+                    }));
                     return (
                       <form action={assignJobAction} className="grid gap-2 sm:grid-cols-[1fr_auto]" key={assignmentRole}>
                         <input name="jobId" type="hidden" value={job.id} />

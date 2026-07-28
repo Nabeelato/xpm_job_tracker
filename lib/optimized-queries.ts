@@ -175,7 +175,7 @@ export async function getDashboardMetrics(user: AppSessionUser): Promise<Dashboa
       COUNT(*)::int AS "totalJobs",
       (SELECT COUNT(*)::int FROM client_counts) AS "totalClients",
       (SELECT COUNT(*)::int FROM client_counts WHERE job_count > 1) AS "clientsWithMultipleJobs",
-      (COUNT(*) FILTER (WHERE job_state_number IN (2, 3, 4, 5, 6)))::int AS "mainJobs",
+      (COUNT(*) FILTER (WHERE job_state_number IN (3, 4, 5, 6) AND xpm_state NOT LIKE '%3.1%' AND xpm_state NOT LIKE '%3.2%'))::int AS "mainJobs",
       (COUNT(*) FILTER (WHERE department_code = 'VAT' AND job_state_number IN (3, 4, 5, 6) AND xpm_state NOT LIKE '%3.1%' AND xpm_state NOT LIKE '%3.2%'))::int AS "vatJobs",
       (COUNT(*) FILTER (WHERE department_code = 'SOFTWARE_BK' AND job_state_number IN (3, 4, 5, 6) AND xpm_state NOT LIKE '%3.1%' AND xpm_state NOT LIKE '%3.2%'))::int AS "softwareBkJobs",
       (COUNT(*) FILTER (WHERE department_code = 'BK' AND job_state_number IN (3, 4, 5, 6) AND xpm_state NOT LIKE '%3.1%' AND xpm_state NOT LIKE '%3.2%'))::int AS "bkJobs",

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { Prisma } from "@prisma/client";
 import { PageHeader } from "@/components/page-header";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { prisma } from "@/lib/db";
@@ -147,12 +148,9 @@ export default async function AssignmentHistoryPage({
                 ))}
               </select>
             </label>
-            <button
-              className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90"
-              type="submit"
-            >
+            <Button loadingLabel="Filtering..." size="sm" type="submit">
               Filter
-            </button>
+            </Button>
             {currentParams.toString() ? (
               <Link
                 className="rounded-md border px-3 py-1.5 text-xs hover:bg-muted/40"

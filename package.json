@@ -12,11 +12,9 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:seed": "prisma db seed",
     "seed:users": "node scripts/users.js",
-    "dry-run:source-manager-category": "node scripts/dry-run-source-manager-category.js",
-    "backfill:client-category-source-people": "node scripts/backfill-client-category-by-source-people.js",
-    "backfill:irfan-tanvir-software-bk": "node scripts/backfill-irfan-tanvir-software-bk.js",
-    "dry-run:source-manager-rules": "node scripts/backfill-source-manager-rules.js",
-    "backfill:source-manager-rules": "node scripts/backfill-source-manager-rules.js --apply"
+    "dry-run:source-partner-category": "node scripts/backfill-client-category-by-source-people.js",
+    "backfill:source-partner-category": "node scripts/backfill-client-category-by-source-people.js --apply",
+    "backfill:irfan-tanvir-software-bk": "node scripts/backfill-irfan-tanvir-software-bk.js"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.8.0",

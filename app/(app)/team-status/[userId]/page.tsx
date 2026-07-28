@@ -7,12 +7,13 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { prisma } from "@/lib/db";
 import { requireUser, type AppSessionUser } from "@/lib/rbac";
 import { getCurrentStatuses } from "@/lib/staff-status";
-import { formatDateTime, formatElapsedTime, titleCaseEnum } from "@/lib/utils";
+import { formatDateTime, formatElapsedMilliseconds, formatElapsedTime, titleCaseEnum } from "@/lib/utils";
 
-type TargetUser = { id: string; supervisorId: string | null };
+type TargetUser = { id: string; supervisorId: string | null; departmentId: string | null };
 
 function canViewStatusRecords(viewer: AppSessionUser, target: TargetUser) {
-  if (viewer.role === "ADMIN" || viewer.role === "MANAGER") return true;
+  if (viewer.role === "ADMIN" || viewer.departmentCode === "QC") return true;
+  if (viewer.role === "MANAGER") return Boolean(viewer.departmentId) && viewer.departmentId === target.departmentId;
   if (target.supervisorId === viewer.id) return true;
   return target.id === viewer.id;
 }
@@ -31,6 +32,7 @@ export default async function StaffStatusRecordsPage({
       id: true,
       name: true,
       role: true,
+      departmentId: true,
       supervisorId: true,
       department: { select: { code: true, name: true } },
     },
@@ -38,12 +40,11 @@ export default async function StaffStatusRecordsPage({
   if (!target) notFound();
   if (!canViewStatusRecords(viewer, target)) redirect("/dashboard");
 
-  const [statuses, sessions] = await Promise.all([
+  const [statuses, sessions, assignments] = await Promise.all([
     getCurrentStatuses([target.id]),
     prisma.staffStatusSession.findMany({
       where: { userId: target.id },
       orderBy: { startedAt: "desc" },
-      take: 200,
       select: {
         id: true,
         startedAt: true,
@@ -59,8 +60,38 @@ export default async function StaffStatusRecordsPage({
         },
       },
     }),
+    prisma.jobAssignment.findMany({
+      where: { userId: target.id },
+      orderBy: { assignedAt: "desc" },
+      select: {
+        id: true,
+        assignmentRole: true,
+        assignedAt: true,
+        active: true,
+        updatedAt: true,
+        job: {
+          select: {
+            id: true,
+            jobIdFromExcel: true,
+            jobName: true,
+            jobStateNumber: true,
+            client: { select: { displayName: true } },
+            stateTimeRecords: {
+              orderBy: { enteredAt: "asc" },
+              select: { id: true, stateNumber: true, enteredAt: true, exitedAt: true },
+            },
+            staffStatusSessions: {
+              where: { userId: target.id },
+              orderBy: { startedAt: "asc" },
+              select: { id: true, startedAt: true, endedAt: true, endReason: true },
+            },
+          },
+        },
+      },
+    }),
   ]);
   const currentStatus = statuses.get(target.id) ?? null;
+  const now = new Date();
 
   return (
     <>
@@ -91,10 +122,96 @@ export default async function StaffStatusRecordsPage({
         </CardContent>
       </Card>
 
+      <Card className="mb-5">
+        <CardHeader>
+          <CardTitle>Assignment and Job State Timeline ({assignments.length})</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {assignments.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No job assignment timeline is available yet.</p>
+          ) : assignments.map((assignment) => {
+            const assignmentEnd = assignment.active ? now : assignment.updatedAt;
+            const stateDurationMs = assignment.job.stateTimeRecords.reduce((total, record) => (
+              total + Math.max(0, (record.exitedAt ?? now).getTime() - record.enteredAt.getTime())
+            ), 0);
+            return (
+              <details className="rounded-lg border bg-white open:border-primary/30" key={assignment.id}>
+                <summary className="cursor-pointer list-none p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <Link className="font-semibold text-primary hover:underline" href={`/jobs/${assignment.job.id}`}>
+                        {assignment.job.jobIdFromExcel} — {assignment.job.jobName}
+                      </Link>
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        {assignment.job.client.displayName} · Current state {assignment.job.jobStateNumber ?? "—"}
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2 text-xs">
+                      <Badge variant="outline">{titleCaseEnum(assignment.assignmentRole)}</Badge>
+                      <Badge variant={assignment.active ? "success" : "secondary"}>{assignment.active ? "Active" : "Ended"}</Badge>
+                      <span>Assigned {formatDateTime(assignment.assignedAt)}</span>
+                      <span className="font-medium">Duration {formatElapsedTime(assignment.assignedAt, assignmentEnd)}</span>
+                    </div>
+                  </div>
+                </summary>
+                <div className="border-t p-4">
+                  <div className="mb-2 text-sm font-semibold">
+                    State movements · recorded duration {formatElapsedMilliseconds(stateDurationMs)}
+                  </div>
+                  {assignment.job.stateTimeRecords.length ? (
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>State</TableHead>
+                            <TableHead>Entered</TableHead>
+                            <TableHead>Exited</TableHead>
+                            <TableHead>Duration</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {assignment.job.stateTimeRecords.map((record) => (
+                            <TableRow key={record.id}>
+                              <TableCell className="font-medium">State {record.stateNumber}</TableCell>
+                              <TableCell className="whitespace-nowrap text-xs">{formatDateTime(record.enteredAt)}</TableCell>
+                              <TableCell className="whitespace-nowrap text-xs">
+                                {record.exitedAt ? formatDateTime(record.exitedAt) : <Badge variant="success">Current</Badge>}
+                              </TableCell>
+                              <TableCell className="whitespace-nowrap">
+                                {formatElapsedTime(record.enteredAt, record.exitedAt ?? now)}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  ) : <p className="text-sm text-muted-foreground">No state movements have been recorded for this job.</p>}
+
+                  <div className="mb-2 mt-4 text-sm font-semibold">Staff working sessions</div>
+                  {assignment.job.staffStatusSessions.length ? (
+                    <div className="space-y-1 text-xs">
+                      {assignment.job.staffStatusSessions.map((session) => (
+                        <div className="flex flex-wrap gap-2 rounded bg-muted/40 px-3 py-2" key={session.id}>
+                          <span>{formatDateTime(session.startedAt)}</span>
+                          <span>→</span>
+                          <span>{session.endedAt ? formatDateTime(session.endedAt) : "Ongoing"}</span>
+                          <span className="font-medium">({formatElapsedTime(session.startedAt, session.endedAt ?? now)})</span>
+                          <span className="text-muted-foreground">{session.endReason ? titleCaseEnum(session.endReason) : ""}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : <p className="text-sm text-muted-foreground">No working sessions recorded for this job.</p>}
+                </div>
+              </details>
+            );
+          })}
+        </CardContent>
+      </Card>
+
       <Card>
         <CardHeader>
           <CardTitle>
-            History{sessions.length === 200 ? " (showing latest 200)" : ` (${sessions.length})`}
+            Working Session History ({sessions.length})
           </CardTitle>
         </CardHeader>
         <CardContent>

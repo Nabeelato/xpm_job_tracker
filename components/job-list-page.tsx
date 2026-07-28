@@ -6,10 +6,15 @@ import { JobFilters, type JobTabsConfig } from "@/components/job-filters";
 import { JobsTableClient, type JobRow } from "@/components/jobs-table-client";
 import { PageHeader } from "@/components/page-header";
 import { Pagination } from "@/components/pagination";
-import { buttonVariants } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button-variants";
 import { managerUserRoles } from "@/lib/constants";
 import { prisma } from "@/lib/db";
 import { detectDepartmentMismatch } from "@/lib/import/department";
+import {
+  applyDefaultJobFilters,
+  hasExplicitAllJobsFilters,
+  parseDefaultJobFilters,
+} from "@/lib/job-filter-preferences";
 import { summarizeJobStateTime, type JobStateGroup } from "@/lib/job-state";
 import { buildJobReportOrderBy, buildJobReportWhere } from "@/lib/reports";
 import { getSystemSetting } from "@/lib/settings";
@@ -72,10 +77,27 @@ export async function JobListPage({
   const { pageSize, pageSizeOption } = parsePageSize(searchParam(rawParams, "pageSize"));
   const page = toInt(searchParam(rawParams, "page"), 1);
   const pageParams = withPageSizeParam(params, pageSizeOption);
+  if (
+    effectivePreset.allJobs &&
+    params.get("defaultFilters") !== "off" &&
+    !hasExplicitAllJobsFilters(params)
+  ) {
+    const storedDefaults = await prisma.user.findUnique({
+      where: { id: user.id },
+      select: { defaultJobFilters: true },
+    });
+    const defaults = parseDefaultJobFilters(storedDefaults?.defaultJobFilters);
+    if (defaults) {
+      applyDefaultJobFilters(pageParams, defaults);
+      pageParams.set("defaultFilters", "off");
+    }
+  }
   const filterParams = paramsWithPreset(pageParams, effectivePreset);
   const sortBy = searchParam(rawParams, "sortBy");
   const sortDir = (searchParam(rawParams, "sortDir") ?? "asc") as "asc" | "desc";
-  const dataScope = effectivePreset.allJobs ? "all" : "visible";
+  const dataScope = effectivePreset.allJobs && (user.role === "ADMIN" || user.departmentCode === "QC")
+    ? "all"
+    : "visible";
   const where = buildJobReportWhere(filterParams, user, { scope: dataScope });
 
   const [showAssignmentAge, showStateAge] = await Promise.all([
@@ -93,6 +115,7 @@ export async function JobListPage({
         jobName: true,
         xpmState: true,
         jobStateNumber: true,
+        sourceManagerName: true,
         stateEnteredAt: true,
         missingFromLatestImport: true,
         stateTimeRecords: {
@@ -127,7 +150,7 @@ export async function JobListPage({
       orderBy: { name: "asc" },
       select: { id: true, name: true, role: true, departmentId: true, supervisorId: true },
     }),
-    // Active assignment counts per user, per department — workflow states 3-6 only
+    // Active assignment counts per user, per department — workflow states 3-7 only
     prisma.jobAssignment.findMany({
       where: {
         active: true,
@@ -154,21 +177,16 @@ export async function JobListPage({
   const managerUsers = users.filter((candidate) =>
     managerUserRoles.includes(candidate.role) && (isAdmin || isSameDepartment(candidate)),
   );
-  const elevatedUsers = users.filter((candidate) => candidate.role !== "STAFF");
   const supervisorUsers = isAdmin
-    ? elevatedUsers
+    ? users.filter((candidate) => candidate.role === "SUPERVISOR")
     : user.role === "MANAGER"
       ? users.filter((candidate) =>
-          (candidate.role === "SUPERVISOR" && isSameDepartment(candidate)) || candidate.id === user.id,
+          candidate.role === "SUPERVISOR" && isSameDepartment(candidate),
         )
       : user.role === "SUPERVISOR" && currentUserOption
         ? [currentUserOption]
         : [];
-  const crossRoleStaffUsers = isAdmin
-    ? elevatedUsers
-    : (user.role === "MANAGER" || user.role === "SUPERVISOR") && currentUserOption
-      ? [currentUserOption]
-      : [];
+  const crossRoleStaffUsers: Array<{ id: string; name: string | null }> = [];
 
   const staffBySupId = new Map<string, { id: string; name: string | null }[]>();
   for (const u of users) {
@@ -296,7 +314,7 @@ export async function JobListPage({
               bookkeepingBy: j.client.bookkeepingBy,
               jobName: j.jobName,
               departmentCode: j.finalDepartment.code,
-              departmentWarningCode: detectDepartmentMismatch(j.jobName, j.finalDepartment.code),
+              departmentWarningCode: detectDepartmentMismatch(j.jobName, j.finalDepartment.code, j.sourceManagerName),
               xpmState: j.xpmState,
               jobStateNumber: j.jobStateNumber,
               stateEnteredAt: j.stateEnteredAt,

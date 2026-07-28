@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { PrismaClient, UserRole } from "@prisma/client";
+import { AssignmentRole, NotificationType, PrismaClient, UserRole } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import bcrypt from "bcryptjs";
 
@@ -11,156 +11,321 @@ if (!databaseUrl) {
 
 const adapter = new PrismaPg(databaseUrl);
 const prisma = new PrismaClient({ adapter });
-
-// Default password for all users unless overridden in the shell.
 const DEFAULT_PASSWORD = process.env.USER_SEED_DEFAULT_PASSWORD ?? "ChangeMe123!";
+const REQUESTED_ADMIN_USERNAMES = ["maaz.imran", "irfan.tanwir", "taaha.sheikh"];
 
-async function upsertUser({ name, username, role, supervisorId }) {
-  const passwordHash = await bcrypt.hash(DEFAULT_PASSWORD, 12);
-  const existing = await prisma.user.findUnique({
-    where: { username },
+async function syncAdminExceptionNotifications() {
+  const admins = await prisma.user.findMany({
+    where: { active: true, role: UserRole.ADMIN },
     select: { id: true },
   });
+  if (!admins.length) return;
 
-  const user = await prisma.user.upsert({
-    where: { username },
-    update: {
-      name,
-      passwordHash,
-      role,
-      supervisorId: supervisorId ?? null,
-      active: true,
-    },
-    create: {
-      name,
-      username,
-      passwordHash,
-      role,
-      supervisorId: supervisorId ?? null,
-    },
+  const unclassifiedJobs = await prisma.job.findMany({
+    where: { archived: false, finalDepartment: { code: "UNCLASSIFIED" } },
+    select: { id: true, jobIdFromExcel: true, sourceManagerName: true },
   });
+  for (const admin of admins) {
+    const existingWarnings = await prisma.notification.findMany({
+      where: {
+        recipientId: admin.id,
+        type: NotificationType.UNCLASSIFIED_JOB,
+        jobId: { in: unclassifiedJobs.map((job) => job.id) },
+        readAt: null,
+      },
+      select: { jobId: true },
+    });
+    const warnedJobIds = new Set(existingWarnings.map((notification) => notification.jobId));
+    const missingWarnings = unclassifiedJobs
+      .filter((job) => !warnedJobIds.has(job.id))
+      .map((job) => ({
+        recipientId: admin.id,
+        type: NotificationType.UNCLASSIFIED_JOB,
+        title: "Unclassified job requires review",
+        body: job.sourceManagerName?.trim()
+          ? `${job.jobIdFromExcel} was imported into Unclassified. XPM manager "${job.sourceManagerName}" and the job details did not match a department rule. Please review and assign the correct department.`
+          : `${job.jobIdFromExcel} was imported into Unclassified. No XPM manager was assigned and the job details did not match a department rule. Please review and assign the correct department.`,
+        href: `/jobs/${job.id}`,
+        jobId: job.id,
+      }));
+    if (missingWarnings.length) {
+      await prisma.notification.createMany({ data: missingWarnings, skipDuplicates: true });
+    }
+  }
 
-  console.log(existing ? `♻ Updated user: ${username}` : `✅ Created user: ${username}`);
-  return user;
+  const openJobWhere = {
+    archived: false,
+    OR: [{ jobStateNumber: null }, { jobStateNumber: { notIn: [11, 12] } }],
+  };
+  const summaries = [
+    {
+      type: NotificationType.MISSING_STAFF,
+      role: AssignmentRole.STAFF,
+      title: "Missing staff assignments",
+      roleLabel: "staff",
+      href: "/reports/exceptions?type=missing_staff",
+    },
+    {
+      type: NotificationType.MISSING_SUPERVISOR,
+      role: AssignmentRole.SUPERVISOR,
+      title: "Missing supervisor assignments",
+      roleLabel: "supervisor",
+      href: "/reports/exceptions?type=missing_supervisor",
+    },
+  ];
+
+  for (const summary of summaries) {
+    const count = await prisma.job.count({
+      where: {
+        AND: [
+          openJobWhere,
+          { assignments: { none: { active: true, assignmentRole: summary.role, user: { active: true } } } },
+        ],
+      },
+    });
+    for (const admin of admins) {
+      const existing = await prisma.notification.findFirst({
+        where: {
+          recipientId: admin.id,
+          type: summary.type,
+          jobId: null,
+          readAt: null,
+        },
+        orderBy: { createdAt: "desc" },
+        select: { id: true },
+      });
+      if (!count) {
+        if (existing) {
+          await prisma.notification.update({ where: { id: existing.id }, data: { readAt: new Date() } });
+        }
+        continue;
+      }
+
+      const body = `${count} active job${count === 1 ? "" : "s"} do${count === 1 ? "es" : ""} not have an active ${summary.roleLabel} assignment. Review the exception report now.`;
+      if (existing) {
+        await prisma.notification.update({
+          where: { id: existing.id },
+          data: { title: summary.title, body, href: summary.href, createdAt: new Date() },
+        });
+      } else {
+        await prisma.notification.create({
+          data: {
+            recipientId: admin.id,
+            type: summary.type,
+            title: summary.title,
+            body,
+            href: summary.href,
+          },
+        });
+      }
+    }
+  }
 }
 
 async function main() {
-  console.log("Starting user seed...");
+  console.log("Starting requested hierarchy seed...");
 
-  const manager = await upsertUser({
+  const departments = await prisma.department.findMany({ select: { id: true, code: true } });
+  const departmentIdByCode = new Map(departments.map((department) => [department.code, department.id]));
+
+  async function upsertUser({ name, username, role, departmentCode, supervisorId = null }) {
+    const departmentId = departmentIdByCode.get(departmentCode);
+    if (!departmentId) throw new Error(`Department ${departmentCode} does not exist.`);
+
+    const existing = await prisma.user.findUnique({ where: { username }, select: { id: true } });
+    const hierarchyData = {
+      name,
+      role,
+      departmentId,
+      supervisorId,
+      active: true,
+    };
+    const user = existing
+      ? await prisma.user.update({ where: { username }, data: hierarchyData })
+      : await prisma.user.create({
+          data: {
+            ...hierarchyData,
+            username,
+            passwordHash: await bcrypt.hash(DEFAULT_PASSWORD, 12),
+          },
+        });
+
+    console.log(existing ? `♻ Updated user: ${username}` : `✅ Created user: ${username}`);
+    return user;
+  }
+
+  const maaz = await upsertUser({
     name: "Maaz Imran",
     username: "maaz.imran",
+    role: UserRole.ADMIN,
+    departmentCode: "AFS",
+  });
+  const irfan = await upsertUser({
+    name: "Irfan Tanwir",
+    username: "irfan.tanwir",
+    role: UserRole.ADMIN,
+    departmentCode: "SOFTWARE_BK",
+  });
+  const taaha = await upsertUser({
+    name: "Taaha Sheikh",
+    username: "taaha.sheikh",
+    role: UserRole.ADMIN,
+    departmentCode: "BK",
+  });
+  void maaz;
+
+  const faizan = await upsertUser({
+    name: "Faizan Ali",
+    username: "faizan.ali",
     role: UserRole.MANAGER,
+    departmentCode: "VAT",
   });
-
-  const amer = await upsertUser({
-    name: "Amer Khawaja",
-    username: "amer.khawaja",
-    role: UserRole.SUPERVISOR,
-    supervisorId: manager.id,
-  });
-
-  const aroosh = await upsertUser({
-    name: "Aroosh Shahram",
-    username: "aroosh.shahram",
-    role: UserRole.SUPERVISOR,
-    supervisorId: manager.id,
-  });
-
-  const ahmadMaqbool = await upsertUser({
-    name: "Ahmad Maqbool",
-    username: "ahmad.maqbool",
-    role: UserRole.SUPERVISOR,
-    supervisorId: manager.id,
-  });
-
-  const saira = await upsertUser({
-    name: "Saira Kanwal",
-    username: "saira.kanwal",
-    role: UserRole.SUPERVISOR,
-    supervisorId: manager.id,
-  });
-
-  const arslan = await upsertUser({
-    name: "Arslan Asif",
-    username: "arslan.asif",
-    role: UserRole.SUPERVISOR,
-    supervisorId: manager.id,
+  await upsertUser({
+    name: "Abdul Toheed",
+    username: "abdul.toheed",
+    role: UserRole.MANAGER,
+    departmentCode: "QC",
   });
 
   const hashir = await upsertUser({
     name: "Hashir",
     username: "hashir",
     role: UserRole.SUPERVISOR,
-    supervisorId: manager.id,
+    departmentCode: "VAT",
+    supervisorId: faizan.id,
   });
-
-  const faizan = await upsertUser({
-    name: "Faizan Ali",
-    username: "faizan.ali",
+  const saira = await upsertUser({
+    name: "Saira Kanwal",
+    username: "saira.kanwal",
     role: UserRole.SUPERVISOR,
-    supervisorId: manager.id,
+    departmentCode: "VAT",
+    supervisorId: faizan.id,
   });
-
-  const abdulToheed = await upsertUser({
-    name: "Abdul Toheed",
-    username: "abdul.toheed",
+  const ahmadMaqbool = await upsertUser({
+    name: "Ahmad Maqbool",
+    username: "ahmad.maqbool",
     role: UserRole.SUPERVISOR,
-    supervisorId: manager.id,
+    departmentCode: "BK",
+    supervisorId: taaha.id,
+  });
+  await upsertUser({
+    name: "Irtaza Jamshid",
+    username: "irtaza.jamshid",
+    role: UserRole.SUPERVISOR,
+    departmentCode: "BK",
+    supervisorId: taaha.id,
   });
 
-  const createEmployee = (name, username, supervisorId) =>
-    upsertUser({
+  const softwareSupervisors = [
+    ["Amer Khawaja", "amer.khawaja"],
+    ["Aroosh Shahram", "aroosh.shahram"],
+    ["Arslan Asif", "arslan.asif"],
+    ["Nabeel Hussain", "nabeel.hussain"],
+    ["Ayaan Ali", "ayaan.ali"],
+    ["Usama Arshad", "usama.arshad"],
+    ["Zeeshan Qadir", "zeeshan.qadir"],
+    ["Ahmad Raza", "ahmad.raza1"],
+    ["Ayesha Ibrahim", "ayesha.ibrahim"],
+    ["Muhammad Abdullah", "muhammad.abdullah"],
+    ["Saim Amjad", "saim.amjad"],
+    ["Jawad Khan", "jawad.khan"],
+    ["Kinza Saboor", "kinza.saboor"],
+    ["Zainab Tariq", "zainab.tariq"],
+    ["Zainab Usman", "zainab.usman"],
+    ["Hadi Ahmad", "hadi.ahmad"],
+  ];
+  for (const [name, username] of softwareSupervisors) {
+    await upsertUser({
       name,
       username,
-      role: UserRole.STAFF,
-      supervisorId,
+      role: UserRole.SUPERVISOR,
+      departmentCode: "SOFTWARE_BK",
+      supervisorId: irfan.id,
     });
+  }
 
-  await createEmployee("Nabeel Hussain", "nabeel.hussain", amer.id);
-  await createEmployee("Ayaan Ali", "ayaan.ali", amer.id);
-  await createEmployee("Usama Arshad", "usama.arshad", amer.id);
-  await createEmployee("Zeeshan Qadir", "zeeshan.qadir", amer.id);
+  async function createStaff(name, username, departmentCode, supervisorId) {
+    return upsertUser({ name, username, role: UserRole.STAFF, departmentCode, supervisorId });
+  }
 
-  await createEmployee("Ahmad Raza", "ahmad.raza1", aroosh.id);
-  await createEmployee("Ayesha Ibrahim", "ayesha.ibrahim", aroosh.id);
-  await createEmployee("Muhammad Abdullah", "muhammad.abdullah", aroosh.id);
-  await createEmployee("Saim Amjad", "saim.amjad", aroosh.id);
+  await createStaff("Abdul Rahman", "abdul.rahman", "BK", ahmadMaqbool.id);
+  await createStaff("Hamza Sarfraz", "hamza.sarfraz", "BK", ahmadMaqbool.id);
+  await createStaff("Muhammad Ammar", "muhammad.ammar", "BK", ahmadMaqbool.id);
+  await createStaff("Saif Ullah", "saif.ullah", "BK", ahmadMaqbool.id);
 
-  await createEmployee("Abdul Rahman", "abdul.rahman", ahmadMaqbool.id);
-  await createEmployee("Hamza Sarfraz", "hamza.sarfraz", ahmadMaqbool.id);
-  await createEmployee("Irtaza Jamshid", "irtaza.jamshid", ahmadMaqbool.id);
-  await createEmployee("Muhammad Ammar", "muhammad.ammar", ahmadMaqbool.id);
-  await createEmployee("Saif Ullah", "saif.ullah", ahmadMaqbool.id);
+  await createStaff("Ahmad Raza", "ahmad.raza2", "VAT", saira.id);
+  await createStaff("Murtaza Jamshid", "murtaza.jamshid", "VAT", saira.id);
+  await createStaff("Shomaiza Imtiaz", "shomaiza.imtiaz", "VAT", saira.id);
+  await createStaff("Usman Akram", "usman.akram", "VAT", saira.id);
 
-  await createEmployee("Ahmad Raza", "ahmad.raza2", saira.id);
-  await createEmployee("Murtaza Jamshid", "murtaza.jamshid", saira.id);
-  await createEmployee("Shomaiza Imtiaz", "shomaiza.imtiaz", saira.id);
-  await createEmployee("Usman Akram", "usman.akram", saira.id);
+  await createStaff("Abdul Aziz", "abdul.aziz", "VAT", hashir.id);
+  await createStaff("Alishba Waseem", "alishba.waseem", "VAT", hashir.id);
+  await createStaff("Muhammad Saad", "muhammad.saad", "VAT", hashir.id);
+  await createStaff("Muhammad Talha", "muhammad.talha", "VAT", hashir.id);
+  await createStaff("Rohan Abbas", "rohan.abbas", "VAT", hashir.id);
+  await createStaff("Zulqarnain Qasim", "zulqarnain.qasim", "VAT", hashir.id);
 
-  await createEmployee("Jawad Khan", "jawad.khan", arslan.id);
-  await createEmployee("Kinza Saboor", "kinza.saboor", arslan.id);
-  await createEmployee("Zainab Tariq", "zainab.tariq", arslan.id);
-  await createEmployee("Zainab Usman", "zainab.usman", arslan.id);
-  await createEmployee("Hadi Ahmad", "hadi.ahmad", arslan.id);
+  const softwareDepartmentId = departmentIdByCode.get("SOFTWARE_BK");
+  await prisma.user.updateMany({
+    where: { departmentId: softwareDepartmentId, role: UserRole.STAFF },
+    data: { role: UserRole.SUPERVISOR, supervisorId: irfan.id },
+  });
 
-  await createEmployee("Abdul Aziz", "abdul.aziz", hashir.id);
-  await createEmployee("Alishba Waseem", "alishba.waseem", hashir.id);
-  await createEmployee("Muhammad Saad", "muhammad.saad", hashir.id);
-  await createEmployee("Muhammad Talha", "muhammad.talha", hashir.id);
-  await createEmployee("Rohan Abbas", "rohan.abbas", hashir.id);
+  const invalidRoleAssignments = await prisma.jobAssignment.updateMany({
+    where: {
+      active: true,
+      OR: [
+        { assignmentRole: AssignmentRole.MANAGER, user: { role: { notIn: [UserRole.ADMIN, UserRole.MANAGER] } } },
+        { assignmentRole: AssignmentRole.SUPERVISOR, user: { role: { not: UserRole.SUPERVISOR } } },
+        { assignmentRole: AssignmentRole.STAFF, user: { role: { not: UserRole.STAFF } } },
+      ],
+    },
+    data: { active: false },
+  });
 
-  await createEmployee("Zulqarnain Qasim", "zulqarnain.qasim", faizan.id);
+  const activeStaffAssignments = await prisma.jobAssignment.findMany({
+    where: { active: true, assignmentRole: AssignmentRole.STAFF },
+    select: {
+      id: true,
+      user: { select: { supervisorId: true } },
+      job: {
+        select: {
+          assignments: {
+            where: { active: true, assignmentRole: AssignmentRole.SUPERVISOR },
+            select: { userId: true },
+          },
+        },
+      },
+    },
+  });
+  const invalidTeamAssignmentIds = activeStaffAssignments
+    .filter((assignment) => !assignment.user.supervisorId || !assignment.job.assignments.some(
+      (supervisorAssignment) => supervisorAssignment.userId === assignment.user.supervisorId,
+    ))
+    .map((assignment) => assignment.id);
+  if (invalidTeamAssignmentIds.length) {
+    await prisma.jobAssignment.updateMany({
+      where: { id: { in: invalidTeamAssignmentIds } },
+      data: { active: false },
+    });
+  }
 
-  await createEmployee("Amina Sabtain", "amina.sabtain", abdulToheed.id);
-  await createEmployee("Haris Idrees", "haris.idrees", abdulToheed.id);
+  const bootstrapUsername = process.env.ADMIN_EMAIL?.trim().toLowerCase();
+  if (bootstrapUsername && !REQUESTED_ADMIN_USERNAMES.includes(bootstrapUsername)) {
+    await prisma.user.updateMany({
+      where: { username: bootstrapUsername, role: UserRole.ADMIN },
+      data: { active: false },
+    });
+  }
 
-  console.log("User seed completed successfully.");
+  await syncAdminExceptionNotifications();
+
+  console.log(`Hierarchy seed completed. Removed ${invalidRoleAssignments.count} role-mismatched and ${invalidTeamAssignmentIds.length} cross-team assignments.`);
 }
 
 main()
-  .catch((e) => {
-    console.error("User seed failed:", e);
+  .catch((error) => {
+    console.error("User seed failed:", error);
     process.exit(1);
   })
   .finally(async () => {

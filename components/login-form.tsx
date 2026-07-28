@@ -82,9 +82,11 @@ export function LoginForm() {
       <Button
         className="h-10 w-full rounded-2xl bg-primary text-[13px] font-semibold text-primary-foreground shadow-[0_20px_40px_-24px_hsla(var(--primary),0.95)] hover:bg-primary/90"
         disabled={pending}
+        loading={pending}
+        loadingLabel="Signing in..."
         type="submit"
       >
-        <span>{pending ? "Signing in..." : "Sign in to workspace"}</span>
+        <span>Sign in to workspace</span>
         <ArrowRight className="h-4 w-4" />
       </Button>
     </form>

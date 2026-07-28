@@ -5,9 +5,50 @@ import { redirect } from "next/navigation";
 import bcrypt from "bcryptjs";
 import { AssignmentRole, AssignmentSource, ChangeSource, InternalStatus, UserRole } from "@prisma/client";
 import { prisma } from "@/lib/db";
+import { syncMissingAssignmentExceptionNotifications } from "@/lib/job-exceptions";
 import { requireRole } from "@/lib/rbac";
 
 export type ActionResult = { ok: true; message?: string } | { ok: false; error: string };
+
+async function hierarchyParentError({
+  role,
+  departmentId,
+  supervisorId,
+}: {
+  role: UserRole;
+  departmentId: string | null;
+  supervisorId: string | null;
+}) {
+  if (departmentId) {
+    const department = await prisma.department.findUnique({ where: { id: departmentId }, select: { code: true } });
+    if (!department) return "The selected department does not exist.";
+    if (department.code === "SOFTWARE_BK" && role === UserRole.STAFF) {
+      return "Software BK users must be supervisors, not staff.";
+    }
+  }
+  if (role === UserRole.ADMIN) return supervisorId ? "Administrators cannot report to another user." : null;
+  if (role === UserRole.STAFF && !supervisorId) return "Staff must have a supervisor.";
+  if (!supervisorId) return null;
+
+  const parent = await prisma.user.findUnique({
+    where: { id: supervisorId },
+    select: { active: true, role: true, departmentId: true },
+  });
+  if (!parent?.active) return "The selected hierarchy parent is inactive or missing.";
+  if (!departmentId || parent.departmentId !== departmentId) {
+    return "The selected hierarchy parent must be in the same department.";
+  }
+  if (role === UserRole.STAFF && parent.role !== UserRole.SUPERVISOR) {
+    return "Staff can report only to a supervisor.";
+  }
+  if (role === UserRole.SUPERVISOR && parent.role !== UserRole.ADMIN && parent.role !== UserRole.MANAGER) {
+    return "Supervisors can report only to an administrator or manager.";
+  }
+  if (role === UserRole.MANAGER && parent.role !== UserRole.ADMIN) {
+    return "Managers can report only to an administrator.";
+  }
+  return null;
+}
 
 export async function createUserAction(_prev: ActionResult | null, formData: FormData): Promise<ActionResult> {
   await requireRole(["ADMIN"]);
@@ -22,14 +63,21 @@ export async function createUserAction(_prev: ActionResult | null, formData: For
   if (!username) return { ok: false, error: "Username is required." };
   if (password.length < 8) return { ok: false, error: "Password must be at least 8 characters." };
   if (!Object.values(UserRole).includes(role)) return { ok: false, error: "Invalid role." };
+  const hierarchyError = await hierarchyParentError({ role, departmentId, supervisorId });
+  if (hierarchyError) return { ok: false, error: hierarchyError };
 
   const existing = await prisma.user.findUnique({ where: { username }, select: { id: true } });
   if (existing) return { ok: false, error: "A user with this username already exists." };
 
   const passwordHash = await bcrypt.hash(password, 12);
-  await prisma.user.create({
-    data: { name, username, passwordHash, role, departmentId, supervisorId },
-    select: { id: true },
+  await prisma.$transaction(async (tx) => {
+    await tx.user.create({
+      data: { name, username, passwordHash, role, departmentId, supervisorId },
+      select: { id: true },
+    });
+    if (role === UserRole.ADMIN) {
+      await syncMissingAssignmentExceptionNotifications(tx);
+    }
   });
 
   revalidatePath("/users");
@@ -52,6 +100,8 @@ export async function updateUserAction(_prev: ActionResult | null, formData: For
   if (newPassword.length > 0 && newPassword.length < 8) {
     return { ok: false, error: "Password must be at least 8 characters." };
   }
+  const hierarchyError = await hierarchyParentError({ role, departmentId, supervisorId });
+  if (hierarchyError) return { ok: false, error: hierarchyError };
 
   const conflict = await prisma.user.findFirst({
     where: { username, NOT: { id } },
@@ -84,6 +134,7 @@ export async function updateUserAction(_prev: ActionResult | null, formData: For
       ? AssignmentRole.SUPERVISOR
       : AssignmentRole.MANAGER;
   let synchronizedAssignments = 0;
+  let deactivatedAssignments = 0;
 
   await prisma.$transaction(async (tx) => {
     await tx.user.update({ where: { id }, data });
@@ -96,23 +147,61 @@ export async function updateUserAction(_prev: ActionResult | null, formData: For
       },
       select: { id: true, jobId: true, assignmentRole: true },
     });
-    if (!mismatchedAssignments.length) return;
+    if (!active) {
+      const deactivated = await tx.jobAssignment.updateMany({
+        where: { userId: id, active: true },
+        data: { active: false },
+      });
+      deactivatedAssignments = deactivated.count;
+      await syncMissingAssignmentExceptionNotifications(tx);
+      return;
+    }
+    if (!mismatchedAssignments.length) {
+      await syncMissingAssignmentExceptionNotifications(tx);
+      return;
+    }
 
-    await tx.jobAssignment.updateMany({
-      where: { id: { in: mismatchedAssignments.map((assignment) => assignment.id) } },
-      data: { assignmentRole: targetAssignmentRole },
-    });
-    await tx.jobChangeLog.createMany({
-      data: mismatchedAssignments.map((assignment) => ({
-        jobId: assignment.jobId,
-        changedById: admin.id,
-        changeSource: ChangeSource.USER,
-        fieldName: "assignment_role",
-        oldValue: assignment.assignmentRole,
-        newValue: targetAssignmentRole,
-      })),
-    });
-    synchronizedAssignments = mismatchedAssignments.length;
+    let assignmentsToConvert = mismatchedAssignments;
+    if (targetAssignmentRole === AssignmentRole.STAFF || targetAssignmentRole === AssignmentRole.SUPERVISOR) {
+      const occupied = await tx.jobAssignment.findMany({
+        where: {
+          active: true,
+          userId: { not: id },
+          assignmentRole: targetAssignmentRole,
+          jobId: { in: mismatchedAssignments.map((assignment) => assignment.jobId) },
+        },
+        select: { jobId: true },
+      });
+      const occupiedJobIds = new Set(occupied.map((assignment) => assignment.jobId));
+      const conflicts = mismatchedAssignments.filter((assignment) => occupiedJobIds.has(assignment.jobId));
+      assignmentsToConvert = mismatchedAssignments.filter((assignment) => !occupiedJobIds.has(assignment.jobId));
+      if (conflicts.length) {
+        await tx.jobAssignment.updateMany({
+          where: { id: { in: conflicts.map((assignment) => assignment.id) } },
+          data: { active: false },
+        });
+        deactivatedAssignments = conflicts.length;
+      }
+    }
+
+    if (assignmentsToConvert.length) {
+      await tx.jobAssignment.updateMany({
+        where: { id: { in: assignmentsToConvert.map((assignment) => assignment.id) } },
+        data: { assignmentRole: targetAssignmentRole },
+      });
+      await tx.jobChangeLog.createMany({
+        data: assignmentsToConvert.map((assignment) => ({
+          jobId: assignment.jobId,
+          changedById: admin.id,
+          changeSource: ChangeSource.USER,
+          fieldName: "assignment_role",
+          oldValue: assignment.assignmentRole,
+          newValue: targetAssignmentRole,
+        })),
+      });
+      synchronizedAssignments = assignmentsToConvert.length;
+    }
+    await syncMissingAssignmentExceptionNotifications(tx);
   });
 
   revalidatePath("/users");
@@ -120,8 +209,8 @@ export async function updateUserAction(_prev: ActionResult | null, formData: For
   revalidatePath("/jobs/my");
   return {
     ok: true,
-    message: synchronizedAssignments
-      ? `Saved. ${synchronizedAssignments} active job assignment${synchronizedAssignments === 1 ? "" : "s"} updated to ${targetAssignmentRole.toLowerCase()}.`
+    message: synchronizedAssignments || deactivatedAssignments
+      ? `Saved. ${synchronizedAssignments} active assignment${synchronizedAssignments === 1 ? "" : "s"} updated to ${targetAssignmentRole.toLowerCase()}${deactivatedAssignments ? `; ${deactivatedAssignments} conflicting or inactive-user assignment${deactivatedAssignments === 1 ? "" : "s"} removed` : ""}.`
       : "Saved.",
   };
 }
@@ -207,6 +296,7 @@ export async function deleteUserAction(_prev: ActionResult | null, formData: For
       }
 
       await tx.user.delete({ where: { id } });
+      await syncMissingAssignmentExceptionNotifications(tx);
     });
   } catch {
     return { ok: false, error: "Unable to delete this user. They may have related records." };
@@ -259,11 +349,22 @@ export async function transferAssignmentsAction(
       select: { jobId: true, assignmentRole: true },
     });
     const overlap = new Set(toActive.map((a) => `${a.jobId}|${a.assignmentRole}`));
+    const exclusiveOccupants = await tx.jobAssignment.findMany({
+      where: {
+        active: true,
+        userId: { not: fromUserId },
+        assignmentRole: { in: [AssignmentRole.STAFF, AssignmentRole.SUPERVISOR] },
+        jobId: { in: fromActive.map((assignment) => assignment.jobId) },
+      },
+      select: { jobId: true, assignmentRole: true },
+    });
+    const exclusiveOverlap = new Set(exclusiveOccupants.map((a) => `${a.jobId}|${a.assignmentRole}`));
 
     const deactivateIds: string[] = [];
     const transferAssignments: typeof fromActive = [];
     for (const a of fromActive) {
-      if (overlap.has(`${a.jobId}|${a.assignmentRole}`)) deactivateIds.push(a.id);
+      const assignmentKey = `${a.jobId}|${a.assignmentRole}`;
+      if (overlap.has(assignmentKey) || exclusiveOverlap.has(assignmentKey)) deactivateIds.push(a.id);
       else transferAssignments.push(a);
     }
 
@@ -292,6 +393,7 @@ export async function transferAssignmentsAction(
     if (deactivate) {
       await tx.user.update({ where: { id: fromUserId }, data: { active: false } });
     }
+    await syncMissingAssignmentExceptionNotifications(tx);
   });
 
   revalidatePath("/users");

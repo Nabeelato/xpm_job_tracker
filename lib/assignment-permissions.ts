@@ -12,10 +12,6 @@ export type ActiveAssignmentRef = {
   assignmentRole: AssignmentRole;
 };
 
-export function isElevatedRole(role: UserRole) {
-  return role === "ADMIN" || role === "MANAGER" || role === "SUPERVISOR";
-}
-
 function isNativeRoleMatch(assignee: AssignmentPermissionUser, assignmentRole: AssignmentRole) {
   if (assignmentRole === "MANAGER") {
     return assignee.role === "ADMIN" || assignee.role === "MANAGER";
@@ -30,23 +26,15 @@ export function canAssignUserToRole(
   assignmentRole: AssignmentRole,
 ) {
   if (actor.role === "ADMIN") {
-    if (assignmentRole === "MANAGER") return isNativeRoleMatch(assignee, assignmentRole);
-    if (assignmentRole === "SUPERVISOR") return isElevatedRole(assignee.role);
-    return true;
+    return isNativeRoleMatch(assignee, assignmentRole);
   }
 
   if (actor.role === "MANAGER") {
     if (!actor.departmentId || assignee.departmentId !== actor.departmentId) return false;
-    if (actor.id === assignee.id && (assignmentRole === "SUPERVISOR" || assignmentRole === "STAFF")) {
-      return true;
-    }
     return isNativeRoleMatch(assignee, assignmentRole);
   }
 
   if (actor.role === "SUPERVISOR") {
-    if (actor.id === assignee.id && (assignmentRole === "SUPERVISOR" || assignmentRole === "STAFF")) {
-      return true;
-    }
     return assignmentRole === "STAFF" && assignee.role === "STAFF" && assignee.supervisorId === actor.id;
   }
 
@@ -66,6 +54,13 @@ export function canManageJobAssignmentRole({
   activeAssignments: ActiveAssignmentRef[];
   operation: "ASSIGN" | "REMOVE";
 }) {
+  if (operation === "ASSIGN" && assignmentRole === "STAFF") {
+    const assignedSupervisorIds = activeAssignments
+      .filter((assignment) => assignment.assignmentRole === "SUPERVISOR")
+      .map((assignment) => assignment.userId);
+    if (!assignee.supervisorId || !assignedSupervisorIds.includes(assignee.supervisorId)) return false;
+  }
+
   if (actor.role === "ADMIN") {
     return operation === "REMOVE" || canAssignUserToRole(actor, assignee, assignmentRole);
   }
@@ -76,8 +71,6 @@ export function canManageJobAssignmentRole({
   }
 
   if (actor.role === "SUPERVISOR") {
-    if (actor.id === assignee.id && assignmentRole === "SUPERVISOR") return true;
-
     const supervisesJob = activeAssignments.some(
       (assignment) => assignment.userId === actor.id && assignment.assignmentRole === "SUPERVISOR",
     );

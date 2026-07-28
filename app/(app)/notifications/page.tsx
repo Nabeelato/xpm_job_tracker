@@ -2,7 +2,8 @@ import Link from "next/link";
 import { CheckCheck } from "lucide-react";
 import { EmptyState } from "@/components/empty-state";
 import { PageHeader } from "@/components/page-header";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button-variants";
 import { Card, CardContent } from "@/components/ui/card";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/rbac";
@@ -31,7 +32,7 @@ export default async function NotificationsPage() {
       },
     },
     orderBy: { createdAt: "desc" },
-    take: 100,
+    take: 500,
   });
   const unreadCount = notifications.filter((notification) => !notification.readAt).length;
 
@@ -76,7 +77,7 @@ export default async function NotificationsPage() {
                     <form action={markNotificationReadAction}>
                       <input name="id" type="hidden" value={notification.id} />
                       <Button size="sm" type="submit">
-                        Mark read
+                        {notification.type === "BK_DEPARTMENT_CONFLICT" ? "Confirm reviewed" : "Mark read"}
                       </Button>
                     </form>
                   ) : null}
@@ -87,7 +88,7 @@ export default async function NotificationsPage() {
           })}
         </div>
       ) : (
-        <EmptyState title="No notifications" description="Assignment, comment, and diary notifications will appear here." />
+        <EmptyState title="No notifications" description="Department alarms, assignments, comments, and diary notifications will appear here." />
       )}
     </>
   );

@@ -93,7 +93,7 @@ function isXpmSubState(value: string | undefined): value is XpmSubState {
 function stateFilterWhere(value: string | undefined): Prisma.JobWhereInput | null | undefined {
   if (!value) return undefined;
   if (value === "all") return null;
-  if (value === "main") return { jobStateNumber: { in: [2, 3, 4, 5, 6] } };
+  if (value === "main") return workflowStateWhere();
   if (value === "workflow") return workflowStateWhere();
   if (value === "state_3_1") return xpmSubStateWhere("job_on_hold");
   if (value === "state_3_2") return xpmSubStateWhere("ifza_check");
@@ -257,7 +257,7 @@ export function buildJobReportWhere(
   } else if (stateGroup && isStateGroup(stateGroup)) {
     and.push(stateGroupWhere(stateGroup));
   } else if (stateSet === "main") {
-    and.push({ jobStateNumber: { in: [2, 3, 4, 5, 6] } });
+    and.push(workflowStateWhere());
   } else if (stateSet === "workflow") {
     and.push(workflowStateWhere());
   } else if (stateSet === "other") {

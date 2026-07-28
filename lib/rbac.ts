@@ -4,13 +4,14 @@ import { cache } from "react";
 import { AssignmentRole, type Prisma, type UserRole } from "@prisma/client";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { workflowStateWhere } from "@/lib/job-state";
+import { isWorkflowJobState, workflowStateWhere } from "@/lib/job-state";
 
 export type AppSessionUser = {
   id: string;
   role: UserRole;
   departmentId?: string | null;
   departmentCode?: string | null;
+  supervisorId?: string | null;
   name?: string | null;
   email?: string | null;
 };
@@ -27,6 +28,7 @@ export const getCurrentUser = cache(async (): Promise<AppSessionUser | null> => 
       email: true,
       role: true,
       departmentId: true,
+      supervisorId: true,
       active: true,
       department: { select: { code: true } },
     },
@@ -39,6 +41,7 @@ export const getCurrentUser = cache(async (): Promise<AppSessionUser | null> => 
     role: user.role,
     departmentId: user.departmentId,
     departmentCode: user.department?.code ?? null,
+    supervisorId: user.supervisorId,
     name: user.name,
     email: user.email,
   };
@@ -79,23 +82,51 @@ export function assignmentRoleForUser(role: UserRole): AssignmentRole {
 }
 
 export function availableJobsWhere(user: AppSessionUser): Prisma.JobWhereInput {
-  if (user.role === "ADMIN") {
-    return {
-      ...workflowStateWhere(),
-      archived: false,
-    };
-  }
-  return {
-    ...workflowStateWhere(),
-    archived: false,
+  const rules: Prisma.JobWhereInput[] = [
+    workflowStateWhere(),
+    { archived: false },
+    {
+      OR: [
+        { finalDepartment: { code: { not: "SOFTWARE_BK" } } },
+        { assignments: { none: { active: true, assignmentRole: AssignmentRole.SUPERVISOR } } },
+      ],
+    },
+  ];
+
+  if (user.role === "ADMIN") return { AND: rules };
+
+  rules.push({
     assignments: {
       none: { active: true, assignmentRole: assignmentRoleForUser(user.role) },
     },
-  };
+  });
+
+  if (user.departmentCode !== "QC") {
+    if (!user.departmentId) return { id: "__no_department__" };
+    rules.push({ finalDepartmentId: user.departmentId });
+  }
+
+  if (user.role === "STAFF") {
+    if (!user.supervisorId) return { id: "__no_supervisor__" };
+    rules.push({
+      assignments: {
+        some: {
+          active: true,
+          assignmentRole: AssignmentRole.SUPERVISOR,
+          userId: user.supervisorId,
+        },
+      },
+    });
+  }
+
+  return { AND: rules };
 }
 
 export function visibleJobsWhere(user: AppSessionUser): Prisma.JobWhereInput {
   if (user.role === "ADMIN" || user.departmentCode === "QC") return {};
+  if (user.role === "MANAGER") {
+    return user.departmentId ? { finalDepartmentId: user.departmentId } : { id: "__no_department__" };
+  }
   return {
     OR: [
       { assignments: { some: { userId: user.id, active: true } } },
@@ -112,14 +143,26 @@ type InteractiveJob = {
   assignments: Array<{ userId: string; assignmentRole: AssignmentRole }>;
   finalDepartmentId?: string;
   jobStateNumber?: number | null;
+  xpmState?: string | null;
   archived?: boolean;
 };
 
 export function canInteractWithJob(user: AppSessionUser, job: InteractiveJob) {
   if (user.role === "ADMIN" || user.departmentCode === "QC") return true;
   if (job.assignments.some((assignment) => assignment.userId === user.id)) return true;
+  const departmentMatches = Boolean(user.departmentId) && job.finalDepartmentId === user.departmentId;
+  if (user.role === "MANAGER" && departmentMatches) return true;
+  const softwareSupervisorAssigned = user.departmentCode === "SOFTWARE_BK" && job.assignments.some(
+    (assignment) => assignment.assignmentRole === AssignmentRole.SUPERVISOR,
+  );
+  const staffSupervisorAssigned = user.role !== "STAFF" || Boolean(
+    user.supervisorId && job.assignments.some(
+      (assignment) => assignment.assignmentRole === AssignmentRole.SUPERVISOR && assignment.userId === user.supervisorId,
+    ),
+  );
   return Boolean(
-    !job.archived && job.jobStateNumber && [3, 4, 5, 6].includes(job.jobStateNumber) &&
+    departmentMatches && !softwareSupervisorAssigned && staffSupervisorAssigned &&
+    !job.archived && isWorkflowJobState(job.jobStateNumber, job.xpmState) &&
     !job.assignments.some((assignment) => assignment.assignmentRole === assignmentRoleForUser(user.role))
   );
 }
