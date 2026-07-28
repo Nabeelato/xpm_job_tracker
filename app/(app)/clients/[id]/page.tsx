@@ -5,6 +5,7 @@ import { DepartmentBadge } from "@/components/department-badge";
 import { PageHeader } from "@/components/page-header";
 import { StatusBadge } from "@/components/status-badge";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { bookkeepingByLabels, bookkeepingSoftwareLabels, clientCategoryLabels } from "@/lib/constants";
@@ -119,12 +120,9 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
                   <option key={key} value={key}>{bookkeepingByLabels[key]}</option>
                 ))}
               </select>
-              <button
-                className="rounded-md bg-primary px-3 py-1 text-xs font-medium text-primary-foreground hover:bg-primary/90"
-                type="submit"
-              >
+              <Button loadingLabel="Saving..." size="sm" type="submit">
                 Save
-              </button>
+              </Button>
             </form>
           ) : null}
         </CardContent>

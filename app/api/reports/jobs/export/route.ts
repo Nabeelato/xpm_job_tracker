@@ -60,7 +60,12 @@ export async function GET(req: NextRequest) {
 
   const params = req.nextUrl.searchParams;
   const requestedScope = params.get("scope");
-  const scope: JobReportScope = requestedScope === "all" ? "all" : requestedScope === "visible" ? "visible" : "report";
+  const canExportAll = user.role === "ADMIN" || user.departmentCode === "QC";
+  const scope: JobReportScope = requestedScope === "all" && canExportAll
+    ? "all"
+    : requestedScope === "visible"
+      ? "visible"
+      : "report";
   const where = buildJobReportWhere(params, user, { scope });
   const total = await prisma.job.count({ where });
 

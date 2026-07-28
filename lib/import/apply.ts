@@ -4,12 +4,14 @@ import {
   ImportStateComparisonCategory,
   ImportStatus,
   InternalStatus,
+  NotificationType,
   type Department,
   type Prisma,
 } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { detectDepartment, detectDepartmentFromManager } from "@/lib/import/department";
 import { normalizeClientName, normalizeHeader } from "@/lib/import/normalize";
+import { syncMissingAssignmentExceptionNotifications } from "@/lib/job-exceptions";
 import { isTimedJobState, jobStateTimerTransition, nextStateEnteredAt, parseJobStateNumber } from "@/lib/job-state";
 
 const rawAliases = {
@@ -59,6 +61,43 @@ function departmentMap(departments: Department[]) {
   return new Map(departments.map((department) => [department.code, department]));
 }
 
+function unclassifiedWarningKey(recipientId: string, jobId: string) {
+  return `${recipientId}:${jobId}`;
+}
+
+async function warnAdminsAboutUnclassifiedJob(
+  tx: Prisma.TransactionClient,
+  adminIds: string[],
+  unreadWarnings: Set<string>,
+  job: { id: string; jobIdFromExcel: string },
+  sourceManagerName: string | null,
+) {
+  const recipients = adminIds.filter(
+    (recipientId) => !unreadWarnings.has(unclassifiedWarningKey(recipientId, job.id)),
+  );
+  if (!recipients.length) return;
+
+  const managerName = sourceManagerName?.trim();
+  const reason = managerName
+    ? `XPM manager "${managerName}" and the job details did not match a department rule.`
+    : "No XPM manager was assigned and the job details did not match a department rule.";
+
+  await tx.notification.createMany({
+    data: recipients.map((recipientId) => ({
+      recipientId,
+      type: NotificationType.UNCLASSIFIED_JOB,
+      title: "Unclassified job requires review",
+      body: `${job.jobIdFromExcel} was imported into Unclassified. ${reason} Please review and assign the correct department.`,
+      href: `/jobs/${job.id}`,
+      jobId: job.id,
+    })),
+  });
+
+  for (const recipientId of recipients) {
+    unreadWarnings.add(unclassifiedWarningKey(recipientId, job.id));
+  }
+}
+
 export async function applyImportBatch(
   importBatchId: string,
   changedById: string,
@@ -89,6 +128,28 @@ export async function applyImportBatch(
       }
 
       const departments = departmentMap(await tx.department.findMany());
+      const adminIds = (
+        await tx.user.findMany({
+          where: { active: true, role: "ADMIN" },
+          select: { id: true },
+        })
+      ).map((admin) => admin.id);
+      const existingWarnings = adminIds.length
+        ? await tx.notification.findMany({
+            where: {
+              recipientId: { in: adminIds },
+              type: NotificationType.UNCLASSIFIED_JOB,
+              readAt: null,
+              jobId: { not: null },
+            },
+            select: { recipientId: true, jobId: true },
+          })
+        : [];
+      const unreadUnclassifiedWarnings = new Set(
+        existingWarnings.flatMap((warning) =>
+          warning.jobId ? [unclassifiedWarningKey(warning.recipientId, warning.jobId)] : [],
+        ),
+      );
 
       const importableRows = batch.rows.filter(
         (row) =>
@@ -174,6 +235,15 @@ export async function applyImportBatch(
           }
           jobByExcelId.set(row.detectedJobId, { ...created, client });
           addLog(logs, created.id, importBatchId, changedById, "job_created", null, row.detectedJobId);
+          if (autoDepartment.code === "UNCLASSIFIED") {
+            await warnAdminsAboutUnclassifiedJob(
+              tx,
+              adminIds,
+              unreadUnclassifiedWarnings,
+              created,
+              sourceManagerName,
+            );
+          }
           continue;
         }
 
@@ -247,6 +317,15 @@ export async function applyImportBatch(
           });
         }
         jobByExcelId.set(row.detectedJobId, { ...updated, client });
+        if (autoDepartment.code === "UNCLASSIFIED" && finalDepartmentId === autoDepartment.id) {
+          await warnAdminsAboutUnclassifiedJob(
+            tx,
+            adminIds,
+            unreadUnclassifiedWarnings,
+            updated,
+            sourceManagerName,
+          );
+        }
       }
 
       const missingJobs = await tx.job.findMany({
@@ -295,6 +374,8 @@ export async function applyImportBatch(
       if (logs.length > 0) {
         await tx.jobChangeLog.createMany({ data: logs });
       }
+
+      await syncMissingAssignmentExceptionNotifications(tx);
 
       return tx.importBatch.update({
         where: { id: importBatchId },

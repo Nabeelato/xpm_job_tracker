@@ -1,15 +1,20 @@
 "use client";
 
 import Link from "next/link";
-import type { ReactNode } from "react";
+import type { FormEvent, ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { ChevronRight, Filter, Search, X } from "lucide-react";
 import { MultiSelectFilter, type MultiSelectOption } from "@/components/multi-select-filter";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button-variants";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { clientCategoryLabels, jobStateOptions } from "@/lib/constants";
 import { cn, titleCaseEnum } from "@/lib/utils";
+import {
+  clearAllJobsDefaultFiltersAction,
+  saveAllJobsDefaultFiltersAction,
+} from "@/app/(app)/jobs/filter-preference-actions";
 
 export type JobTabsConfig = {
   assignees?: boolean;
@@ -350,6 +355,20 @@ export function JobFilters({
   const pillParams = useMemo(() => new URLSearchParams(activeParams ?? params), [activeParams, params]);
   const paramsKey = params;
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [applyingForParams, setApplyingForParams] = useState<string | null>(null);
+  const applyingFilters = applyingForParams === paramsKey;
+  const isAllJobs = basePath === "/jobs";
+  const clearFiltersHref = isAllJobs ? "/jobs?defaultFilters=off" : basePath;
+
+  function handleFilterSubmit(event: FormEvent<HTMLFormElement>) {
+    const submitter = (event.nativeEvent as SubmitEvent).submitter;
+    if (!(submitter instanceof HTMLButtonElement) || submitter.dataset.applyFilters !== "true") return;
+
+    setApplyingForParams(paramsKey);
+    window.setTimeout(() => {
+      setApplyingForParams((current) => current === paramsKey ? null : current);
+    }, 15_000);
+  }
 
   useEffect(() => {
     if (!drawerOpen) return;
@@ -722,7 +741,7 @@ export function JobFilters({
   );
 
   return (
-    <form action={basePath} className="mb-4 space-y-3">
+    <form action={basePath} className="mb-4 space-y-3" onSubmit={handleFilterSubmit}>
       {searchParams.get("pageSize") ? <input name="pageSize" type="hidden" value={searchParams.get("pageSize") ?? ""} /> : null}
       {preservedEntries.map(([key, value], index) => (
         <input key={`${key}-${value}-${index}`} name={key} type="hidden" value={value} />
@@ -742,7 +761,7 @@ export function JobFilters({
 
           <div className="flex flex-wrap items-center gap-2 xl:justify-end">
             {activeFilters.length > 0 ? (
-              <Link className={cn(buttonVariants({ variant: "outline" }), "whitespace-nowrap")} href={basePath}>
+              <Link className={cn(buttonVariants({ variant: "outline" }), "whitespace-nowrap")} href={clearFiltersHref}>
                 Clear filters
               </Link>
             ) : null}
@@ -837,20 +856,43 @@ export function JobFilters({
             </div>
 
             <footer className="border-t border-slate-200/80 bg-white/95 px-4 py-4">
+              {isAllJobs ? (
+                <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <div className="text-sm font-medium text-slate-900">My default filters</div>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Save the selected departments and states for your account. They will be applied when you open All Jobs.
+                  </p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Button formAction={saveAllJobsDefaultFiltersAction} type="submit" variant="outline">
+                      Save as my default
+                    </Button>
+                    <Button formAction={clearAllJobsDefaultFiltersAction} type="submit" variant="ghost">
+                      Clear my default
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="text-sm text-slate-600">
                   {activeFilters.length > 0 ? `${activeFilters.length} filter${activeFilters.length === 1 ? "" : "s"} selected` : "No filters selected"}
                 </div>
                 <div className="flex items-center gap-2">
                   {activeFilters.length > 0 ? (
-                    <Link className={cn(buttonVariants({ variant: "outline" }), "whitespace-nowrap")} href={basePath}>
+                    <Link className={cn(buttonVariants({ variant: "outline" }), "whitespace-nowrap")} href={clearFiltersHref}>
                       Clear filters
                     </Link>
                   ) : null}
                   <Button onClick={closeDrawer} type="button" variant="ghost">
                     Done
                   </Button>
-                  <Button type="submit">Apply filters</Button>
+                  <Button
+                    data-apply-filters="true"
+                    loading={applyingFilters}
+                    loadingLabel="Applying..."
+                    type="submit"
+                  >
+                    Apply filters
+                  </Button>
                 </div>
               </div>
             </footer>

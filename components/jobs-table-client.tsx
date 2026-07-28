@@ -186,8 +186,8 @@ export function JobsTableClient({
           </span>
           {isAdmin ? <Button onClick={() => setModalOpen(true)} size="sm">Bulk assign / unassign</Button> : (
             <>
-              {isAvailableQueue ? <Button onClick={() => void runBulkOwnAction("CLAIM")} size="sm">Bulk claim</Button> : null}
-              {isMyJobs ? <Button onClick={() => void runBulkOwnAction("RELEASE")} size="sm" variant="destructive">Bulk remove</Button> : null}
+              {isAvailableQueue ? <Button loadingLabel="Claiming..." onClick={() => runBulkOwnAction("CLAIM")} size="sm">Bulk claim</Button> : null}
+              {isMyJobs ? <Button loadingLabel="Removing..." onClick={() => runBulkOwnAction("RELEASE")} size="sm" variant="destructive">Bulk remove</Button> : null}
             </>
           )}
           <Button onClick={clearSelection} size="sm" variant="ghost">

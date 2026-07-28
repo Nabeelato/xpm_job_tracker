@@ -1,41 +1,51 @@
-import * as React from "react";
-import { cva, type VariantProps } from "class-variance-authority";
-import { cn } from "@/lib/utils";
+"use client";
 
-const buttonVariants = cva(
-  "inline-flex h-9 items-center justify-center gap-2 whitespace-nowrap rounded-md px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50",
-  {
-    variants: {
-      variant: {
-        default: "bg-primary text-primary-foreground hover:bg-primary/90",
-        secondary: "bg-secondary text-secondary-foreground hover:bg-secondary/85",
-        outline: "border bg-background hover:bg-muted",
-        ghost: "hover:bg-muted",
-        destructive: "bg-destructive text-destructive-foreground hover:bg-destructive/90",
-      },
-      size: {
-        default: "h-9 px-3",
-        sm: "h-8 px-2.5 text-xs",
-        lg: "h-10 px-4",
-        icon: "h-9 w-9 p-0",
-      },
-    },
-    defaultVariants: {
-      variant: "default",
-      size: "default",
-    },
-  },
-);
+import * as React from "react";
+import { Loader2 } from "lucide-react";
+import { useFormStatus } from "react-dom";
+import { buttonVariants, type ButtonVariantProps } from "@/components/ui/button-variants";
+import { cn } from "@/lib/utils";
 
 export interface ButtonProps
   extends React.ButtonHTMLAttributes<HTMLButtonElement>,
-    VariantProps<typeof buttonVariants> {}
+    ButtonVariantProps {
+  loading?: boolean;
+  loadingLabel?: React.ReactNode;
+}
 
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, variant, size, ...props }, ref) => (
-    <button className={cn(buttonVariants({ variant, size, className }))} ref={ref} {...props} />
-  ),
+  ({ children, className, disabled, loading = false, loadingLabel, onClick, type, variant, size, ...props }, ref) => {
+    const { pending: formPending } = useFormStatus();
+    const [clickPending, setClickPending] = React.useState(false);
+    const busy = loading || clickPending || (type !== "button" && formPending);
+
+    function handleClick(event: React.MouseEvent<HTMLButtonElement>) {
+      const result = onClick?.(event) as unknown as PromiseLike<unknown> | undefined;
+      if (result && typeof result.then === "function") {
+        setClickPending(true);
+        void Promise.resolve(result).then(
+          () => setClickPending(false),
+          () => setClickPending(false),
+        );
+      }
+    }
+
+    return (
+      <button
+        aria-busy={busy || undefined}
+        className={cn(buttonVariants({ variant, size, className }))}
+        disabled={disabled || busy}
+        onClick={onClick ? handleClick : undefined}
+        ref={ref}
+        type={type}
+        {...props}
+      >
+        {busy ? <Loader2 aria-hidden="true" className="h-4 w-4 shrink-0 animate-spin" /> : null}
+        {busy && loadingLabel ? loadingLabel : children}
+      </button>
+    );
+  },
 );
 Button.displayName = "Button";
 
-export { Button, buttonVariants };
+export { Button };

@@ -77,6 +77,9 @@ enum NotificationType {
   ASSIGNMENT_ADDED
   ASSIGNMENT_REMOVED
   DIARY_ENTRY
+  UNCLASSIFIED_JOB
+  MISSING_STAFF
+  MISSING_SUPERVISOR
 }
 
 enum BookkeepingSoftware {
@@ -111,6 +114,7 @@ model User {
   supervisor          User?             @relation("SupervisorTeam", fields: [supervisorId], references: [id])
   teamMembers         User[]            @relation("SupervisorTeam")
   active              Boolean           @default(true)
+  defaultJobFilters   Json?              @map("default_job_filters")
   createdAt           DateTime          @default(now()) @map("created_at")
   updatedAt           DateTime          @updatedAt @map("updated_at")
   assignments         JobAssignment[]   @relation("AssignedUser")

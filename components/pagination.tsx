@@ -1,4 +1,4 @@
-import { buttonVariants } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button-variants";
 import { type PageSizeOption, cn, withPageSizeParam } from "@/lib/utils";
 
 const pageSizeOptions: Array<{ label: string; value: PageSizeOption }> = [

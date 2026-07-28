@@ -119,8 +119,8 @@ export function JobCommentForm({ jobId }: { jobId: string }) {
         )}
       </div>
 
-      <Button disabled={submitting} type="submit">
-        {submitting ? "Saving…" : "Add comment"}
+      <Button disabled={submitting} loading={submitting} loadingLabel="Saving…" type="submit">
+        Add comment
       </Button>
     </form>
   );

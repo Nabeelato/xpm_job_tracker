@@ -83,7 +83,10 @@ export function AssignSingleJobModal({
     const key = `${role}:${target.id}`;
     setSavingKey(key);
     const nextAssignments = checked
-      ? [...assignments, { id: `pending-${key}`, assignedAt: new Date(), assignmentRole: role, user: target }]
+      ? [
+          ...assignments.filter((assignment) => role === "MANAGER" || assignment.assignmentRole !== role),
+          { id: `pending-${key}`, assignedAt: new Date(), assignmentRole: role, user: target },
+        ]
       : assignments.filter((assignment) => !(assignment.assignmentRole === role && assignment.user.id === target.id));
     setAssignments(nextAssignments);
     onAssignmentsChange?.(nextAssignments);
@@ -111,23 +114,30 @@ export function AssignSingleJobModal({
       }
     }
     const candidates = [...visibleUsers.values()].sort((a, b) => (a.name ?? "").localeCompare(b.name ?? ""));
+    const exclusiveRoleOccupied = role !== "MANAGER" && roleAssignments.length > 0;
     return (
       <fieldset className="rounded-lg border p-3">
         <legend className="px-1 text-sm font-semibold capitalize">{role.toLowerCase()}s</legend>
         <div className="mt-1 max-h-40 space-y-1 overflow-y-auto">
           {candidates.length ? candidates.map((candidate) => {
             const key = `${role}:${candidate.id}`;
+            const assigned = assignedIds.has(candidate.id);
+            const blockedByExclusiveAssignment = exclusiveRoleOccupied && !assigned;
             return (
               <label
-                className={candidate.disabled
+                className={candidate.disabled || blockedByExclusiveAssignment
                   ? "flex items-center gap-2 rounded px-2 py-1.5 text-sm text-muted-foreground"
                   : "flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-muted"}
                 key={candidate.id}
-                title={candidate.disabled ? "Only an administrator can change this assignment." : undefined}
+                title={candidate.disabled
+                  ? "Only an administrator can change this assignment."
+                  : blockedByExclusiveAssignment
+                    ? `Remove the current ${role.toLowerCase()} before assigning another.`
+                    : undefined}
               >
                 <input
-                  checked={assignedIds.has(candidate.id)}
-                  disabled={candidate.disabled || savingKey === key}
+                  checked={assigned}
+                  disabled={candidate.disabled || blockedByExclusiveAssignment || savingKey === key}
                   onChange={(event) => void toggle(role, candidate, event.target.checked)}
                   type="checkbox"
                 />
@@ -150,7 +160,7 @@ export function AssignSingleJobModal({
     >
       <div className="space-y-5 p-6">
         <div>
-          <h2 className="text-lg font-semibold">Assign Multiple Users</h2>
+          <h2 className="text-lg font-semibold">Assign Users</h2>
           <p className="mt-1 text-sm text-muted-foreground">{job.jobIdFromExcel} — {job.clientName}</p>
           <span className="mt-1 inline-block rounded-full bg-muted px-2 py-0.5 text-xs font-medium">{job.departmentCode}</span>
         </div>
@@ -159,6 +169,7 @@ export function AssignSingleJobModal({
           {currentUserRole !== "SUPERVISOR" ? <RoleChecklist role="MANAGER" users={managerUsers} /> : null}
           <RoleChecklist role="SUPERVISOR" users={supervisorUsers} />
           <RoleChecklist role="STAFF" users={staffUsers} />
+          <p className="text-xs text-muted-foreground">A job can have multiple managers, but only one supervisor and one staff member.</p>
           {currentUserRole !== "SUPERVISOR" && assignedSupervisorIds.length === 0 && crossRoleStaffUsers.length === 0 ? (
             <p className="text-xs text-muted-foreground">Assign at least one supervisor to select staff from their teams.</p>
           ) : null}

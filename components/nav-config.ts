@@ -11,8 +11,9 @@ import {
   CircleX,
   FileUp,
   Home,
-  Search,
   Inbox,
+  Network,
+  TriangleAlert,
   User,
   Users,
 } from "lucide-react";
@@ -44,7 +45,6 @@ export const navSections: NavSection[] = [
       { href: "/jobs/my", label: "My Jobs", icon: User },
       { href: "/jobs/completed", label: "Completed", icon: CheckCircle2 },
       { href: "/jobs/cancelled", label: "Cancelled", icon: CircleX },
-      { href: "/jobs/ifza-check", label: "IFZA Check", icon: Search },
     ],
   },
   {
@@ -61,6 +61,7 @@ export const navSections: NavSection[] = [
     roles: ["ADMIN", "MANAGER", "SUPERVISOR"],
     items: [
       { href: "/team-status", label: "Staff Status", icon: Activity },
+      { href: "/reports/hierarchy", label: "Job Hierarchy", icon: Network },
     ],
   },
   {
@@ -68,6 +69,7 @@ export const navSections: NavSection[] = [
     roles: ["ADMIN"],
     items: [
       { href: "/users", label: "Users", icon: Users },
+      { href: "/reports/exceptions", label: "Exception Reports", icon: TriangleAlert },
       { href: "/reports", label: "Reports", icon: BarChart3 },
     ],
   },

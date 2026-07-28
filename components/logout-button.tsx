@@ -19,9 +19,9 @@ export function LogoutButton() {
   }
 
   return (
-    <Button disabled={pending} onClick={handleSignOut} size="sm" type="button" variant="ghost">
+    <Button disabled={pending} loading={pending} loadingLabel="Logging out..." onClick={handleSignOut} size="sm" type="button" variant="ghost">
       <LogOut className="h-4 w-4" />
-      {pending ? "Logging out..." : "Logout"}
+      Logout
     </Button>
   );
 }
