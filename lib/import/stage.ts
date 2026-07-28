@@ -1,11 +1,11 @@
 import { ImportRowAction, ImportStateComparisonCategory, type Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
-import { detectDepartmentFromManager } from "@/lib/import/department";
+import { detectClientCategoryFromPartner, detectDepartmentFromManager } from "@/lib/import/department";
 import { normalizeClientName } from "@/lib/import/normalize";
 import { parseImportFile } from "@/lib/import/parser";
 import { isMainState } from "@/lib/job-state";
 
-const departmentWorkflowStateNumbers = new Set([3, 4, 5, 6]);
+const departmentWorkflowStateNumbers = new Set([3, 4, 5, 6, 7]);
 
 function sameNullable(a: string | null | undefined, b: string | null | undefined) {
   return (a ?? null) === (b ?? null);
@@ -107,10 +107,11 @@ export async function stageImportBatch(file: File, uploadedById: string, xpmDown
         action = ImportRowAction.NEW_JOB;
         newJobsCount += 1;
       } else {
-        const sourceManagerDepartmentCode = detectDepartmentFromManager(row.managerName);
+        const sourceManagerDepartmentCode = detectDepartmentFromManager(row.managerName, row.jobName);
         const shouldForceDepartment = sourceManagerDepartmentCode !== null;
         const effectiveDepartmentCode = sourceManagerDepartmentCode ?? row.detectedDepartmentCode;
         const autoDepartment = departmentByCode.get(effectiveDepartmentCode);
+        const detectedClientCategory = detectClientCategoryFromPartner(row.partnerName);
         const nextFinalDepartmentId = shouldForceDepartment
           ? autoDepartment?.id
           : matchedJob.departmentManuallyOverridden
@@ -125,6 +126,7 @@ export async function stageImportBatch(file: File, uploadedById: string, xpmDown
           matchedJob.jobStateNumber !== row.jobStateNumber ||
           !sameNullable(matchedJob.sourceManagerName, row.managerName) ||
           !sameNullable(matchedJob.sourcePartnerName, row.partnerName) ||
+          (detectedClientCategory !== null && matchedJob.client.category !== detectedClientCategory) ||
           !sameNullable(matchedJob.autoDetectedDepartmentId, autoDepartment?.id ?? null) ||
           matchedJob.finalDepartmentId !== nextFinalDepartmentId ||
           manualOverrideCleared ||

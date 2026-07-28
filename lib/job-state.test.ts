@@ -56,7 +56,7 @@ test("state timer closes and restarts on each numeric state change", () => {
     closeActiveRecord: true,
     startStateNumber: 4,
   });
-  assert.deepEqual(jobStateTimerTransition(4, 7), {
+  assert.deepEqual(jobStateTimerTransition(4, 8), {
     closeActiveRecord: true,
     startStateNumber: null,
   });
@@ -86,8 +86,12 @@ test("returning to a previous state resumes its accumulated timer", () => {
   );
 });
 
-test("states 7 and above do not start timers", () => {
-  for (const state of [7, 8, 11, 12]) {
+test("state 7 starts a timer as part of the active workflow", () => {
+  assert.equal(jobStateTimerTransition(6, 7).startStateNumber, 7);
+});
+
+test("states 8 and above do not start timers", () => {
+  for (const state of [8, 11, 12]) {
     assert.equal(jobStateTimerTransition(6, state).startStateNumber, null);
   }
 });

@@ -4,7 +4,7 @@ import { cache } from "react";
 import { AssignmentRole, type Prisma, type UserRole } from "@prisma/client";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { workflowStateWhere } from "@/lib/job-state";
+import { isWorkflowJobState, workflowStateWhere } from "@/lib/job-state";
 
 export type AppSessionUser = {
   id: string;
@@ -162,8 +162,7 @@ export function canInteractWithJob(user: AppSessionUser, job: InteractiveJob) {
   );
   return Boolean(
     departmentMatches && !softwareSupervisorAssigned && staffSupervisorAssigned &&
-    !job.archived && job.jobStateNumber && [3, 4, 5, 6].includes(job.jobStateNumber) &&
-    !job.xpmState?.includes("3.1") && !job.xpmState?.includes("3.2") &&
+    !job.archived && isWorkflowJobState(job.jobStateNumber, job.xpmState) &&
     !job.assignments.some((assignment) => assignment.assignmentRole === assignmentRoleForUser(user.role))
   );
 }

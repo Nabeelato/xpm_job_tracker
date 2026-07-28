@@ -1,25 +1,44 @@
 import { sanitizeText } from "@/lib/import/normalize";
+import type { ClientCategory } from "@prisma/client";
 
 export type DepartmentCode = "VAT" | "SOFTWARE_BK" | "BK" | "AFS" | "QC" | "UNCLASSIFIED";
 
-const taahaManagerPattern = /\btaaha\s+sheikh\b/i;
+const taahaPattern = /\btaaha\s+(?:imran|sheikh)\b/i;
 const irfanManagerPattern = /\birfan\s+tan(?:v|w)ir\b/i;
+const maazManagerPattern = /\bmaaz\s+imran\b/i;
+const faizanManagerPattern = /\bfaizan\s+ali\b/i;
+const afsJobTitlePattern = /\b(?:ye\s*\/\s*pe|pe\s*\/\s*ye)\b/i;
 
-// Maps manager names from the import file to their department.
-// Matching is done on exact full-name patterns for the special managers.
-const managerRules: Array<{ code: DepartmentCode; patterns: RegExp[] }> = [
-  { code: "BK", patterns: [taahaManagerPattern] },
-  { code: "SOFTWARE_BK", patterns: [irfanManagerPattern] },
-  { code: "AFS", patterns: [/\bmaaz\b/i] },
-  { code: "VAT", patterns: [/\bfaizan\b/i] },
-];
+export function hasAfsJobTitle(jobName: unknown) {
+  return afsJobTitlePattern.test(sanitizeText(jobName));
+}
 
-export function detectDepartmentFromManager(managerName: string | null | undefined): DepartmentCode | null {
+// Import department rules are intentionally manager-led. Taaha Sheikh is kept
+// as an alias because that is the name currently supplied by the XPM export.
+export function detectDepartmentFromManager(
+  managerName: string | null | undefined,
+  jobName?: unknown,
+): DepartmentCode | null {
   if (!managerName) return null;
   const name = sanitizeText(managerName);
-  for (const rule of managerRules) {
-    if (rule.patterns.some((pattern) => pattern.test(name))) return rule.code;
-  }
+  if (taahaPattern.test(name)) return "BK";
+  if (irfanManagerPattern.test(name)) return "SOFTWARE_BK";
+  if (faizanManagerPattern.test(name)) return "VAT";
+  if (maazManagerPattern.test(name) && hasAfsJobTitle(jobName)) return "AFS";
+  return null;
+}
+
+export function detectImportDepartment(managerName: string | null | undefined, jobName: unknown): DepartmentCode {
+  return detectDepartmentFromManager(managerName, jobName) ?? "UNCLASSIFIED";
+}
+
+export function detectClientCategoryFromPartner(
+  partnerName: string | null | undefined,
+): ClientCategory | null {
+  if (!partnerName) return null;
+  const name = sanitizeText(partnerName);
+  if (irfanManagerPattern.test(name)) return "SOFTWARE";
+  if (taahaPattern.test(name)) return "MANUAL";
   return null;
 }
 

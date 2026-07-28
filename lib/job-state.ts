@@ -3,7 +3,10 @@ import type { Prisma } from "@prisma/client";
 export type JobStateGroup = "MAIN" | "OTHER" | "COMPLETED" | "CANCELLED";
 export type XpmSubState = "ifza_check" | "job_on_hold";
 
-const mainStateNumbers = new Set([2, 3, 4, 5, 6]);
+export const mainJobStateNumbers = [2, 3, 4, 5, 6, 7];
+export const workflowJobStateNumbers = [3, 4, 5, 6, 7];
+
+const mainStateNumberSet = new Set(mainJobStateNumbers);
 
 export function parseJobStateNumber(value: unknown): number | null {
   if (value === null || value === undefined) return null;
@@ -30,7 +33,17 @@ export function nextStateEnteredAt({
 }
 
 export function isTimedJobState(stateNumber: number | null | undefined): stateNumber is number {
-  return typeof stateNumber === "number" && stateNumber >= 1 && stateNumber <= 6;
+  return typeof stateNumber === "number" && stateNumber >= 1 && stateNumber <= 7;
+}
+
+export function isWorkflowJobState(
+  stateNumber: number | null | undefined,
+  xpmState?: string | null,
+) {
+  return typeof stateNumber === "number" &&
+    workflowJobStateNumbers.includes(stateNumber) &&
+    !xpmState?.includes("3.1") &&
+    !xpmState?.includes("3.2");
 }
 
 export function jobStateTimerTransition(
@@ -73,7 +86,7 @@ export function summarizeJobStateTime(
 }
 
 export function isMainState(number: number | null | undefined) {
-  return typeof number === "number" && mainStateNumbers.has(number);
+  return typeof number === "number" && mainStateNumberSet.has(number);
 }
 
 export function stateGroupForNumber(number: number | null | undefined): JobStateGroup {
@@ -91,7 +104,7 @@ export function xpmSubStateWhere(sub: XpmSubState): Prisma.JobWhereInput {
 
 export function workflowStateWhere(): Prisma.JobWhereInput {
   return {
-    jobStateNumber: { in: [3, 4, 5, 6] },
+    jobStateNumber: { in: workflowJobStateNumbers },
     NOT: [
       { xpmState: { contains: "3.1" } },
       { xpmState: { contains: "3.2" } },
@@ -111,13 +124,13 @@ export function exactStateWhere(number: number): Prisma.JobWhereInput {
 }
 
 export function stateGroupWhere(group: JobStateGroup): Prisma.JobWhereInput {
-  if (group === "MAIN") return { jobStateNumber: { in: [2, 3, 4, 5, 6] } };
+  if (group === "MAIN") return { jobStateNumber: { in: mainJobStateNumbers } };
   if (group === "COMPLETED") return { jobStateNumber: 11 };
   if (group === "CANCELLED") return { jobStateNumber: 12 };
   return {
     OR: [
       { jobStateNumber: null },
-      { jobStateNumber: { in: [1, 7, 8, 9, 10] } },
+      { jobStateNumber: { in: [1, 8, 9, 10] } },
     ],
   };
 }

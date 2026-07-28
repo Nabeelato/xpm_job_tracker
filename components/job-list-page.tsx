@@ -118,7 +118,7 @@ export async function JobListPage({
         stateEnteredAt: true,
         missingFromLatestImport: true,
         stateTimeRecords: {
-          where: { stateNumber: { gte: 1, lte: 6 } },
+          where: { stateNumber: { gte: 1, lte: 7 } },
           select: { stateNumber: true, enteredAt: true, exitedAt: true },
         },
         client: { select: { displayName: true, category: true, bookkeepingSoftware: true, bookkeepingBy: true } },
@@ -149,12 +149,12 @@ export async function JobListPage({
       orderBy: { name: "asc" },
       select: { id: true, name: true, role: true, departmentId: true, supervisorId: true },
     }),
-    // Active assignment counts per user, per department — workflow states 3-6 only
+    // Active assignment counts per user, per department — workflow states 3-7 only
     prisma.jobAssignment.findMany({
       where: {
         active: true,
         job: {
-          jobStateNumber: { in: [3, 4, 5, 6] },
+          jobStateNumber: { in: [3, 4, 5, 6, 7] },
           NOT: [
             { xpmState: { contains: "3.1" } },
             { xpmState: { contains: "3.2" } },

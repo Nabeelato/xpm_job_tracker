@@ -7,6 +7,7 @@ import { ArrowDown, ArrowUp, ArrowUpDown, TriangleAlert } from "lucide-react";
 import { formatDistanceToNowStrict } from "date-fns";
 import type { BookkeepingBy, BookkeepingSoftware, ClientCategory } from "@prisma/client";
 import { bookkeepingSoftwareLabels } from "@/lib/constants";
+import { isTimedJobState, isWorkflowJobState } from "@/lib/job-state";
 import { AssignJobsModal } from "@/components/assign-jobs-modal";
 import { AssignSingleJobModal } from "@/components/assign-single-job-modal";
 import { DepartmentBadge } from "@/components/department-badge";
@@ -280,7 +281,7 @@ export function JobsTableClient({
                 currentUserRole === "SUPERVISOR" ? "SUPERVISOR" : "MANAGER";
               const isClaimable = isAvailableQueue && currentUserRole !== "ADMIN" &&
                 !job.assignments.some((assignment) => assignment.assignmentRole === claimRole) &&
-                Boolean(job.jobStateNumber && [3, 4, 5, 6].includes(job.jobStateNumber));
+                isWorkflowJobState(job.jobStateNumber, job.xpmState);
               const ownAssignment = job.assignments.find((assignment) =>
                 assignment.user.id === currentUserId && assignment.assignmentRole === claimRole,
               );
@@ -294,7 +295,7 @@ export function JobsTableClient({
               const isSoftware = job.clientCategory === "SOFTWARE";
               const isCancelled = job.jobStateNumber === 12;
               const isCompleted = job.jobStateNumber === 11;
-              const isTimedState = job.jobStateNumber !== null && job.jobStateNumber >= 1 && job.jobStateNumber <= 6;
+              const isTimedState = isTimedJobState(job.jobStateNumber);
               const activeStateElapsedMs = job.stateIdleActiveEnteredAt
                 ? Math.max(0, Date.now() - job.stateIdleActiveEnteredAt.getTime())
                 : 0;
@@ -303,8 +304,8 @@ export function JobsTableClient({
                 <TableRow
                   className={cn(
                     isSoftware && "bg-yellow-100 hover:bg-yellow-200",
-                    isCompleted && "bg-green-50 hover:bg-green-100 dark:bg-green-950/20",
-                    isCancelled && "bg-red-50 hover:bg-red-100 dark:bg-red-950/20",
+                    !isSoftware && isCompleted && "bg-green-50 hover:bg-green-100 dark:bg-green-950/20",
+                    !isSoftware && isCancelled && "bg-red-50 hover:bg-red-100 dark:bg-red-950/20",
                     isChecked && "bg-primary/10 hover:bg-primary/15",
                   )}
                   key={job.id}

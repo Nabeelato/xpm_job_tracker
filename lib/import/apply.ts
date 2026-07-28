@@ -5,11 +5,16 @@ import {
   ImportStatus,
   InternalStatus,
   NotificationType,
+  type ClientCategory,
   type Department,
   type Prisma,
 } from "@prisma/client";
 import { prisma } from "@/lib/db";
-import { detectDepartment, detectDepartmentFromManager } from "@/lib/import/department";
+import {
+  detectClientCategoryFromPartner,
+  detectDepartmentFromManager,
+  detectImportDepartment,
+} from "@/lib/import/department";
 import { normalizeClientName, normalizeHeader } from "@/lib/import/normalize";
 import { syncMissingAssignmentExceptionNotifications } from "@/lib/job-exceptions";
 import { isTimedJobState, jobStateTimerTransition, nextStateEnteredAt, parseJobStateNumber } from "@/lib/job-state";
@@ -167,6 +172,26 @@ export async function applyImportBatch(
         include: { client: true },
       });
       const jobByExcelId = new Map(existingJobs.map((job) => [job.jobIdFromExcel, job]));
+      const activeTimerJobIds = new Set(
+        (
+          await tx.jobStateTimeRecord.findMany({
+            where: { jobId: { in: existingJobs.map((job) => job.id) }, exitedAt: null },
+            select: { jobId: true },
+          })
+        ).map((record) => record.jobId),
+      );
+      const clientCategoryByKey = new Map<string, ClientCategory>();
+      for (const row of importableRows) {
+        if (!row.detectedClientName) continue;
+        const raw = row.rawDataJson as Record<string, string>;
+        const category = detectClientCategoryFromPartner(readRawValue(raw, rawAliases.partner));
+        if (!category) continue;
+        const clientKey = normalizeClientName(row.detectedClientName);
+        const existingCategory = clientCategoryByKey.get(clientKey);
+        if (!existingCategory || category === "SOFTWARE") {
+          clientCategoryByKey.set(clientKey, category);
+        }
+      }
 
       const logs: Prisma.JobChangeLogCreateManyInput[] = [];
       const now = new Date();
@@ -175,13 +200,18 @@ export async function applyImportBatch(
         if (!row.detectedJobId || !row.detectedClientName || !row.detectedJobName) continue;
 
         const clientKey = normalizeClientName(row.detectedClientName);
+        const clientCategory = clientCategoryByKey.get(clientKey) ?? null;
         const client = await tx.client.upsert({
           where: { normalizedClientKey: clientKey },
-          update: { sourceClientName: row.detectedClientName },
+          update: {
+            sourceClientName: row.detectedClientName,
+            ...(clientCategory ? { category: clientCategory } : {}),
+          },
           create: {
             displayName: row.detectedClientName,
             sourceClientName: row.detectedClientName,
             normalizedClientKey: clientKey,
+            category: clientCategory,
           },
         });
 
@@ -191,12 +221,8 @@ export async function applyImportBatch(
         const jobStateNumber = row.newStateNumber ?? parseJobStateNumber(xpmState);
         const sourceManagerName = readRawValue(raw, rawAliases.manager);
         const sourcePartnerName = readRawValue(raw, rawAliases.partner);
-        const sourceManagerDepartmentCode = detectDepartmentFromManager(sourceManagerName);
-        // Source manager takes priority when it matches a department rule.
-        const detectedCode =
-          sourceManagerDepartmentCode ??
-          row.detectedDepartmentCode ??
-          detectDepartment(row.detectedJobName, row.detectedClientName);
+        const sourceManagerDepartmentCode = detectDepartmentFromManager(sourceManagerName, row.detectedJobName);
+        const detectedCode = detectImportDepartment(sourceManagerName, row.detectedJobName);
         const autoDepartment = departments.get(detectedCode) ?? departments.get("UNCLASSIFIED");
         if (!autoDepartment) throw new Error("Default departments are missing. Run prisma:seed first.");
         const shouldForceDepartment = sourceManagerDepartmentCode !== null;
@@ -253,6 +279,16 @@ export async function applyImportBatch(
             ? existingJob.finalDepartmentId
             : autoDepartment.id;
         const nextDepartmentManuallyOverridden = shouldForceDepartment ? false : existingJob.departmentManuallyOverridden;
+        if (isTimedJobState(existingJob.jobStateNumber) && !activeTimerJobIds.has(existingJob.id)) {
+          await tx.jobStateTimeRecord.create({
+            data: {
+              jobId: existingJob.id,
+              stateNumber: existingJob.jobStateNumber,
+              enteredAt: existingJob.stateEnteredAt ?? now,
+            },
+          });
+          activeTimerJobIds.add(existingJob.id);
+        }
         const stateEnteredAt = nextStateEnteredAt({
           previousStateNumber: existingJob.jobStateNumber,
           nextStateNumber: jobStateNumber,

@@ -1,6 +1,6 @@
 import { StaffStatusEndReason } from "@prisma/client";
 import { prisma } from "@/lib/db";
-import { workflowStateWhere } from "@/lib/job-state";
+import { isWorkflowJobState, workflowStateWhere } from "@/lib/job-state";
 
 export type CurrentStatus = {
   sessionId: string;
@@ -40,9 +40,7 @@ type OpenSession = {
 
 function isActiveWorkflowJob(job: OpenSession["job"]) {
   if (job.archived) return false;
-  if (job.jobStateNumber === null || ![3, 4, 5, 6].includes(job.jobStateNumber)) return false;
-  if (job.xpmState?.includes("3.1") || job.xpmState?.includes("3.2")) return false;
-  return true;
+  return isWorkflowJobState(job.jobStateNumber, job.xpmState);
 }
 
 export function staleEndReason(session: OpenSession): StaffStatusEndReason | null {

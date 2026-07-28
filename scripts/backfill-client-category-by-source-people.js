@@ -22,9 +22,9 @@ function loadEnvIfNeeded() {
   }
 }
 
-function desiredCategory(irfanManagerJobs, taahaManagerJobs) {
-  if (irfanManagerJobs > 0) return "SOFTWARE";
-  if (taahaManagerJobs > 0) return "MANUAL";
+function desiredCategory(irfanPartnerJobs, taahaPartnerJobs) {
+  if (irfanPartnerJobs > 0) return "SOFTWARE";
+  if (taahaPartnerJobs > 0) return "MANUAL";
   return null;
 }
 
@@ -45,14 +45,15 @@ async function main() {
           c.id AS client_id,
           c.display_name,
           c.category,
-          COUNT(*) FILTER (WHERE j.source_manager_name ILIKE '%irfan tanvir%' OR j.source_manager_name ILIKE '%irfan tanwir%')::int AS irfan_manager_jobs,
-          COUNT(*) FILTER (WHERE j.source_manager_name ILIKE '%taaha sheikh%')::int AS taaha_manager_jobs,
+          COUNT(*) FILTER (WHERE j.source_partner_name ILIKE '%irfan tanvir%' OR j.source_partner_name ILIKE '%irfan tanwir%')::int AS irfan_partner_jobs,
+          COUNT(*) FILTER (WHERE j.source_partner_name ILIKE '%taaha imran%' OR j.source_partner_name ILIKE '%taaha sheikh%')::int AS taaha_partner_jobs,
           COUNT(*)::int AS matched_jobs
         FROM clients c
         JOIN jobs j ON j.client_id = c.id
-        WHERE j.source_manager_name ILIKE '%irfan tanvir%'
-           OR j.source_manager_name ILIKE '%irfan tanwir%'
-           OR j.source_manager_name ILIKE '%taaha sheikh%'
+        WHERE j.source_partner_name ILIKE '%irfan tanvir%'
+           OR j.source_partner_name ILIKE '%irfan tanwir%'
+           OR j.source_partner_name ILIKE '%taaha imran%'
+           OR j.source_partner_name ILIKE '%taaha sheikh%'
         GROUP BY c.id, c.display_name, c.category
       )
       SELECT *
@@ -61,14 +62,14 @@ async function main() {
     `);
 
     const preview = rows.map((row) => {
-      const targetCategory = desiredCategory(Number(row.irfan_manager_jobs), Number(row.taaha_manager_jobs));
+      const targetCategory = desiredCategory(Number(row.irfan_partner_jobs), Number(row.taaha_partner_jobs));
       return {
         clientId: row.client_id,
         clientName: row.display_name,
         currentCategory: row.category,
         targetCategory,
-        irfanManagerJobs: Number(row.irfan_manager_jobs),
-        taahaManagerJobs: Number(row.taaha_manager_jobs),
+        irfanPartnerJobs: Number(row.irfan_partner_jobs),
+        taahaPartnerJobs: Number(row.taaha_partner_jobs),
         matchedJobs: Number(row.matched_jobs),
         wouldChange: targetCategory && targetCategory !== row.category,
       };

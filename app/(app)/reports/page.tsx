@@ -315,7 +315,7 @@ export default async function ReportsPage() {
           <Field label="Status Group">
             <Select name="statusGroup">
               <option value="">All active-screen jobs</option>
-              <option value="workflow">Workflow states 03-06</option>
+              <option value="workflow">Workflow states 03-07</option>
               <option value="completed">Completed</option>
               <option value="cancelled">Cancelled</option>
               <option value="missing">Missing latest</option>
