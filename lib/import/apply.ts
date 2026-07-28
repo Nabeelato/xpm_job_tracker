@@ -5,13 +5,12 @@ import {
   ImportStatus,
   InternalStatus,
   NotificationType,
-  type ClientCategory,
   type Department,
   type Prisma,
 } from "@prisma/client";
 import { prisma } from "@/lib/db";
+import { syncBkDepartmentConflictNotifications } from "@/lib/bk-department-conflicts";
 import {
-  detectClientCategoryFromPartner,
   detectDepartmentFromManager,
   detectImportDepartment,
 } from "@/lib/import/department";
@@ -180,19 +179,6 @@ export async function applyImportBatch(
           })
         ).map((record) => record.jobId),
       );
-      const clientCategoryByKey = new Map<string, ClientCategory>();
-      for (const row of importableRows) {
-        if (!row.detectedClientName) continue;
-        const raw = row.rawDataJson as Record<string, string>;
-        const category = detectClientCategoryFromPartner(readRawValue(raw, rawAliases.partner));
-        if (!category) continue;
-        const clientKey = normalizeClientName(row.detectedClientName);
-        const existingCategory = clientCategoryByKey.get(clientKey);
-        if (!existingCategory || category === "SOFTWARE") {
-          clientCategoryByKey.set(clientKey, category);
-        }
-      }
-
       const logs: Prisma.JobChangeLogCreateManyInput[] = [];
       const now = new Date();
 
@@ -200,18 +186,15 @@ export async function applyImportBatch(
         if (!row.detectedJobId || !row.detectedClientName || !row.detectedJobName) continue;
 
         const clientKey = normalizeClientName(row.detectedClientName);
-        const clientCategory = clientCategoryByKey.get(clientKey) ?? null;
         const client = await tx.client.upsert({
           where: { normalizedClientKey: clientKey },
           update: {
             sourceClientName: row.detectedClientName,
-            ...(clientCategory ? { category: clientCategory } : {}),
           },
           create: {
             displayName: row.detectedClientName,
             sourceClientName: row.detectedClientName,
             normalizedClientKey: clientKey,
-            category: clientCategory,
           },
         });
 
@@ -411,6 +394,7 @@ export async function applyImportBatch(
         await tx.jobChangeLog.createMany({ data: logs });
       }
 
+      await syncBkDepartmentConflictNotifications(tx);
       await syncMissingAssignmentExceptionNotifications(tx);
 
       return tx.importBatch.update({

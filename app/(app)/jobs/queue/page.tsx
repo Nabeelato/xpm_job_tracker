@@ -8,7 +8,7 @@ export default function AvailableJobsQueuePage({
   return (
     <JobListPage
       basePath="/jobs/queue"
-      description="Workflow 03 to 07 jobs across every department. Use department filters to find BK, Software BK, AFS, Unclassified, or VAT work."
+      description="Workflow 03 to 06 jobs across every department. Use department filters to find BK, Software BK, AFS, Unclassified, or VAT work."
       preset={{
         availableJobs: true,
         queueVacancyFilters: true,

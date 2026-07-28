@@ -86,12 +86,8 @@ test("returning to a previous state resumes its accumulated timer", () => {
   );
 });
 
-test("state 7 starts a timer as part of the active workflow", () => {
-  assert.equal(jobStateTimerTransition(6, 7).startStateNumber, 7);
-});
-
-test("states 8 and above do not start timers", () => {
-  for (const state of [8, 11, 12]) {
+test("state 7 and above do not start timers", () => {
+  for (const state of [7, 8, 11, 12]) {
     assert.equal(jobStateTimerTransition(6, state).startStateNumber, null);
   }
 });

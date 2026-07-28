@@ -80,6 +80,7 @@ enum NotificationType {
   UNCLASSIFIED_JOB
   MISSING_STAFF
   MISSING_SUPERVISOR
+  BK_DEPARTMENT_CONFLICT
 }
 
 enum BookkeepingSoftware {
@@ -145,6 +146,7 @@ model Client {
   updatedAt           DateTime        @updatedAt @map("updated_at")
   jobs                Job[]
   importRows          ImportRow[]
+  notifications       Notification[]
 
   @@index([displayName])
   @@index([category])
@@ -389,6 +391,8 @@ model Notification {
   href         String?
   jobId        String?          @map("job_id")
   job          Job?             @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  clientId     String?          @map("client_id")
+  client       Client?          @relation(fields: [clientId], references: [id], onDelete: Cascade)
   diaryEntryId String?          @map("diary_entry_id")
   diaryEntry   DiaryEntry?      @relation(fields: [diaryEntryId], references: [id], onDelete: Cascade)
   readAt       DateTime?        @map("read_at")
@@ -397,6 +401,7 @@ model Notification {
   @@index([recipientId])
   @@index([actorId])
   @@index([jobId])
+  @@index([clientId])
   @@index([diaryEntryId])
   @@index([readAt])
   @@index([recipientId, readAt])

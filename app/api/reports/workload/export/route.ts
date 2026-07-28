@@ -121,7 +121,7 @@ export async function GET(req: NextRequest) {
     };
 
     existing.uniqueJobs.add(assignment.job.id);
-    const isWorkflowState = [3, 4, 5, 6, 7].includes(assignment.job.jobStateNumber ?? 0) &&
+    const isWorkflowState = [3, 4, 5, 6].includes(assignment.job.jobStateNumber ?? 0) &&
       !assignment.job.xpmState?.includes("3.1") && !assignment.job.xpmState?.includes("3.2");
     if (isWorkflowState) existing.workflowJobs.add(assignment.job.id);
     if (assignment.job.jobStateNumber === 11) existing.completedJobs.add(assignment.job.id);

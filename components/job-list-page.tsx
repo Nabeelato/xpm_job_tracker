@@ -115,10 +115,11 @@ export async function JobListPage({
         jobName: true,
         xpmState: true,
         jobStateNumber: true,
+        sourceManagerName: true,
         stateEnteredAt: true,
         missingFromLatestImport: true,
         stateTimeRecords: {
-          where: { stateNumber: { gte: 1, lte: 7 } },
+          where: { stateNumber: { gte: 1, lte: 6 } },
           select: { stateNumber: true, enteredAt: true, exitedAt: true },
         },
         client: { select: { displayName: true, category: true, bookkeepingSoftware: true, bookkeepingBy: true } },
@@ -154,7 +155,7 @@ export async function JobListPage({
       where: {
         active: true,
         job: {
-          jobStateNumber: { in: [3, 4, 5, 6, 7] },
+          jobStateNumber: { in: [3, 4, 5, 6] },
           NOT: [
             { xpmState: { contains: "3.1" } },
             { xpmState: { contains: "3.2" } },
@@ -313,7 +314,7 @@ export async function JobListPage({
               bookkeepingBy: j.client.bookkeepingBy,
               jobName: j.jobName,
               departmentCode: j.finalDepartment.code,
-              departmentWarningCode: detectDepartmentMismatch(j.jobName, j.finalDepartment.code),
+              departmentWarningCode: detectDepartmentMismatch(j.jobName, j.finalDepartment.code, j.sourceManagerName),
               xpmState: j.xpmState,
               jobStateNumber: j.jobStateNumber,
               stateEnteredAt: j.stateEnteredAt,

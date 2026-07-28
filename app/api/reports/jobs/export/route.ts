@@ -36,8 +36,8 @@ function clientCategoryFilterLabel(value: string | null | undefined) {
 }
 
 function stateSetFilterLabel(value: string | null) {
-  if (value === "main") return "Main 02-07";
-  if (value === "workflow") return "Workflow 03-07";
+  if (value === "main") return "Main 03-06";
+  if (value === "workflow") return "Workflow 03-06";
   if (value === "other") return "Other states";
   return value;
 }
@@ -106,7 +106,7 @@ export async function GET(req: NextRequest) {
       },
       finalDepartment: { select: { code: true, name: true } },
       stateTimeRecords: {
-        where: { stateNumber: { gte: 1, lte: 7 } },
+        where: { stateNumber: { gte: 1, lte: 6 } },
         select: { stateNumber: true, enteredAt: true, exitedAt: true },
       },
       assignments: {
@@ -139,8 +139,8 @@ export async function GET(req: NextRequest) {
         label: "Job State",
         value:
           joinParamValues(params, "stateFilter", (value) => {
-            if (value === "main") return "Main 02-07";
-            if (value === "workflow") return "Workflow 03-07";
+            if (value === "main") return "Main 03-06";
+            if (value === "workflow") return "Workflow 03-06";
             if (value === "other") return "Other states";
             if (value === "completed") return "Completed";
             if (value === "cancelled") return "Cancelled";
@@ -186,7 +186,7 @@ export async function GET(req: NextRequest) {
       const activeElapsedMs = stateTime.activeEnteredAt
         ? Math.max(0, Date.now() - stateTime.activeEnteredAt.getTime())
         : 0;
-      const stateIdleTime = job.jobStateNumber !== null && job.jobStateNumber >= 1 && job.jobStateNumber <= 7
+      const stateIdleTime = job.jobStateNumber !== null && job.jobStateNumber >= 1 && job.jobStateNumber <= 6
         ? `State ${job.jobStateNumber} · ${formatElapsedMilliseconds(stateTime.accumulatedMs + activeElapsedMs)}`
         : "";
       return {

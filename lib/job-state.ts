@@ -3,8 +3,8 @@ import type { Prisma } from "@prisma/client";
 export type JobStateGroup = "MAIN" | "OTHER" | "COMPLETED" | "CANCELLED";
 export type XpmSubState = "ifza_check" | "job_on_hold";
 
-export const mainJobStateNumbers = [2, 3, 4, 5, 6, 7];
-export const workflowJobStateNumbers = [3, 4, 5, 6, 7];
+export const mainJobStateNumbers = [3, 4, 5, 6];
+export const workflowJobStateNumbers = [3, 4, 5, 6];
 
 const mainStateNumberSet = new Set(mainJobStateNumbers);
 
@@ -33,7 +33,7 @@ export function nextStateEnteredAt({
 }
 
 export function isTimedJobState(stateNumber: number | null | undefined): stateNumber is number {
-  return typeof stateNumber === "number" && stateNumber >= 1 && stateNumber <= 7;
+  return typeof stateNumber === "number" && stateNumber >= 1 && stateNumber <= 6;
 }
 
 export function isWorkflowJobState(
@@ -124,13 +124,13 @@ export function exactStateWhere(number: number): Prisma.JobWhereInput {
 }
 
 export function stateGroupWhere(group: JobStateGroup): Prisma.JobWhereInput {
-  if (group === "MAIN") return { jobStateNumber: { in: mainJobStateNumbers } };
+  if (group === "MAIN") return workflowStateWhere();
   if (group === "COMPLETED") return { jobStateNumber: 11 };
   if (group === "CANCELLED") return { jobStateNumber: 12 };
   return {
     OR: [
       { jobStateNumber: null },
-      { jobStateNumber: { in: [1, 8, 9, 10] } },
+      { jobStateNumber: { in: [1, 2, 7, 8, 9, 10] } },
     ],
   };
 }

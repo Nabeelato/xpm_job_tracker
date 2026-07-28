@@ -22,8 +22,8 @@ export type ImportBreakdownRow = {
 };
 
 const importableActions = new Set(["NEW_JOB", "UPDATE_JOB", "UNCHANGED"]);
-const stateNumbers = [2, 3, 4, 5, 6, 7];
-const departmentStateNumbers = new Set([3, 4, 5, 6, 7]);
+const stateNumbers = [3, 4, 5, 6];
+const departmentStateNumbers = new Set([3, 4, 5, 6]);
 const departmentSections = [
   { code: "VAT", title: "VAT", href: "/jobs?department=VAT&stateSet=workflow" },
   { code: "SOFTWARE_BK", title: "Software Bookkeeping", href: "/jobs?department=SOFTWARE_BK&stateSet=workflow" },
@@ -203,7 +203,7 @@ function DepartmentSections({ rows }: { rows: ImportBreakdownRow[] }) {
               <div className="space-y-1">
                 <CardTitle>{department.title}</CardTitle>
                 <div className="text-sm text-muted-foreground">
-                  {companies} companies, {departmentRows.length} jobs in states 03-07
+                  {companies} companies, {departmentRows.length} jobs in states 03-06
                 </div>
               </div>
               <Link className={cn(buttonVariants({ variant: "outline", size: "sm" }), "shrink-0")} href={department.href}>
@@ -211,7 +211,7 @@ function DepartmentSections({ rows }: { rows: ImportBreakdownRow[] }) {
               </Link>
             </CardHeader>
             <CardContent>
-              <ImportRowsTable rows={departmentRows} emptyText="No clients in states 03-07 for this department." />
+              <ImportRowsTable rows={departmentRows} emptyText="No clients in states 03-06 for this department." />
             </CardContent>
           </Card>
         );

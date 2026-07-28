@@ -53,9 +53,9 @@ const archivedLabels = new Map([
 ]);
 
 const stateFilterOptions = [
-  { value: "main", label: "Main 02-07", meta: "States 02, 03, 04, 05, 06, 07" },
-  { value: "workflow", label: "Workflow 03-07", meta: "Base states 03, 04, 05, 06, 07; excludes 3.1 and 3.2" },
-  { value: "other", label: "Other states", meta: "States 01, 08, 09, 10" },
+  { value: "main", label: "Main 03-06", meta: "Base states 03, 04, 05, 06; excludes 3.1 and 3.2" },
+  { value: "workflow", label: "Workflow 03-06", meta: "Base states 03, 04, 05, 06; excludes 3.1 and 3.2" },
+  { value: "other", label: "Other states", meta: "States 01, 02, 07, 08, 09, 10" },
   { value: "completed", label: "Completed", meta: "State 11" },
   { value: "cancelled", label: "Cancelled", meta: "State 12" },
   ...jobStateOptions.map((state) => ({
@@ -162,9 +162,8 @@ function selectedStateFilters(params: URLSearchParams): StateFilterValue[] {
   if (!numbers.length) return [];
 
   const next = new Set<string>();
-  if (numbers.includes(2)) next.add("main");
-  if (numbers.some((number) => number >= 3 && number <= 7)) next.add("workflow");
-  if (numbers.some((number) => number === 1 || (number >= 8 && number <= 10))) next.add("other");
+  if (numbers.some((number) => number >= 3 && number <= 6)) next.add("workflow");
+  if (numbers.some((number) => number === 1 || number === 2 || (number >= 7 && number <= 10))) next.add("other");
   if (numbers.includes(11)) next.add("completed");
   if (numbers.includes(12)) next.add("cancelled");
 

@@ -1,5 +1,4 @@
 import { sanitizeText } from "@/lib/import/normalize";
-import type { ClientCategory } from "@prisma/client";
 
 export type DepartmentCode = "VAT" | "SOFTWARE_BK" | "BK" | "AFS" | "QC" | "UNCLASSIFIED";
 
@@ -8,6 +7,14 @@ const irfanManagerPattern = /\birfan\s+tan(?:v|w)ir\b/i;
 const maazManagerPattern = /\bmaaz\s+imran\b/i;
 const faizanManagerPattern = /\bfaizan\s+ali\b/i;
 const afsJobTitlePattern = /\b(?:ye\s*\/\s*pe|pe\s*\/\s*ye)\b/i;
+
+export function isTaahaSourcePerson(value: unknown) {
+  return taahaPattern.test(sanitizeText(value));
+}
+
+export function isIrfanSourcePerson(value: unknown) {
+  return irfanManagerPattern.test(sanitizeText(value));
+}
 
 export function hasAfsJobTitle(jobName: unknown) {
   return afsJobTitlePattern.test(sanitizeText(jobName));
@@ -24,22 +31,15 @@ export function detectDepartmentFromManager(
   if (taahaPattern.test(name)) return "BK";
   if (irfanManagerPattern.test(name)) return "SOFTWARE_BK";
   if (faizanManagerPattern.test(name)) return "VAT";
-  if (maazManagerPattern.test(name) && hasAfsJobTitle(jobName)) return "AFS";
+  if (maazManagerPattern.test(name)) return "AFS";
   return null;
 }
 
 export function detectImportDepartment(managerName: string | null | undefined, jobName: unknown): DepartmentCode {
-  return detectDepartmentFromManager(managerName, jobName) ?? "UNCLASSIFIED";
-}
-
-export function detectClientCategoryFromPartner(
-  partnerName: string | null | undefined,
-): ClientCategory | null {
-  if (!partnerName) return null;
-  const name = sanitizeText(partnerName);
-  if (irfanManagerPattern.test(name)) return "SOFTWARE";
-  if (taahaPattern.test(name)) return "MANUAL";
-  return null;
+  const managerDepartment = detectDepartmentFromManager(managerName, jobName);
+  if (managerDepartment) return managerDepartment;
+  const titleDepartment = detectDepartment(jobName);
+  return titleDepartment === "UNCLASSIFIED" ? "AFS" : titleDepartment;
 }
 
 const rules: Array<{ code: DepartmentCode; patterns: RegExp[] }> = [
@@ -72,7 +72,7 @@ const rules: Array<{ code: DepartmentCode; patterns: RegExp[] }> = [
       /\bbook\s*keeping\b/i,
       /\bbookkeeping\b/i,
       /\bbk\b/i,
-      /\bmanagement accounts\b/i,
+      /\bmanagement accounts?\b/i,
       /\bmonthly accounts\b/i,
       /\baccounting services\b/i,
       /\baccounts maintenance\b/i,
@@ -93,6 +93,7 @@ const rules: Array<{ code: DepartmentCode; patterns: RegExp[] }> = [
       /\bfinal accounts\b/i,
       /\bperiod end\b/i,
       /\bpreparation of accounts\b/i,
+      /\bcessation (?:of )?accounts?\b/i,
     ],
   },
 ];
@@ -108,12 +109,15 @@ export function detectDepartment(jobName: unknown, clientName?: unknown): Depart
 export function detectDepartmentMismatch(
   jobName: unknown,
   currentDepartmentCode: string | null | undefined,
+  sourceManagerName?: string | null,
 ): DepartmentCode | null {
-  if (!currentDepartmentCode || currentDepartmentCode === "QC" || currentDepartmentCode === "SOFTWARE_BK") {
+  if (!currentDepartmentCode || currentDepartmentCode === "QC") {
     return null;
   }
 
-  const expectedDepartmentCode = detectDepartment(jobName);
+  const expectedDepartmentCode = sourceManagerName === undefined
+    ? detectDepartment(jobName)
+    : detectImportDepartment(sourceManagerName, jobName);
   if (expectedDepartmentCode === "UNCLASSIFIED" || expectedDepartmentCode === currentDepartmentCode) {
     return null;
   }

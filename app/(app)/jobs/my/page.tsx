@@ -8,7 +8,7 @@ export default function MyJobsPage({
   return (
     <JobListPage
       basePath="/jobs/my"
-      description="Jobs assigned to you, with workflow states 03 to 07 as the default filter."
+      description="Jobs assigned to you, with workflow states 03 to 06 as the default filter."
       preset={{ myJobs: true, stateSet: "workflow", tabs: { assignees: true, departments: true, stateSets: true, states: "all" } }}
       searchParams={searchParams}
       title="My Jobs"

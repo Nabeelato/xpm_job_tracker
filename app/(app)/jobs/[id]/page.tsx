@@ -98,7 +98,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
     xpmState: job.xpmState,
     archived: job.archived,
   });
-  const departmentWarningCode = detectDepartmentMismatch(job.jobName, job.finalDepartment.code);
+  const departmentWarningCode = detectDepartmentMismatch(job.jobName, job.finalDepartment.code, job.sourceManagerName);
 
   const [departments, users] = await Promise.all([
     prisma.department.findMany({ where: { active: true }, orderBy: { code: "asc" }, select: { id: true, name: true } }),

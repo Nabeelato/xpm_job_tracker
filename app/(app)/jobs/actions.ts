@@ -13,6 +13,7 @@ import {
 } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { canAssignUserToRole, canManageJobAssignmentRole } from "@/lib/assignment-permissions";
+import { syncBkDepartmentConflictNotifications } from "@/lib/bk-department-conflicts";
 import { syncMissingAssignmentExceptionNotifications } from "@/lib/job-exceptions";
 import { createNotification } from "@/lib/notifications";
 import {
@@ -115,7 +116,9 @@ export async function updateDepartmentAction(formData: FormData) {
     oldValue: job.finalDepartmentId,
     newValue: departmentId,
   });
+  await prisma.$transaction((tx) => syncBkDepartmentConflictNotifications(tx));
   revalidatePath(`/jobs/${job.id}`);
+  revalidatePath(`/clients/${job.clientId}`);
   revalidatePath("/jobs");
   revalidateAllJobViews();
 }
@@ -172,7 +175,10 @@ export async function archiveJobAction(formData: FormData) {
     where: { id: job.id },
     data: { archived: true, internalStatus: InternalStatus.ARCHIVED },
   });
-  await prisma.$transaction((tx) => syncMissingAssignmentExceptionNotifications(tx));
+  await prisma.$transaction(async (tx) => {
+    await syncBkDepartmentConflictNotifications(tx);
+    await syncMissingAssignmentExceptionNotifications(tx);
+  });
   await logUserChange({
     job: { connect: { id: job.id } },
     changedBy: { connect: { id: user.id } },
