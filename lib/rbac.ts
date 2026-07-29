@@ -81,8 +81,8 @@ export function assignmentRoleForUser(role: UserRole): AssignmentRole {
   return AssignmentRole.MANAGER;
 }
 
-export function availableJobsWhere(user: AppSessionUser): Prisma.JobWhereInput {
-  const rules: Prisma.JobWhereInput[] = [
+function availableQueueBaseRules(): Prisma.JobWhereInput[] {
+  return [
     workflowStateWhere(),
     { archived: false },
     {
@@ -92,6 +92,10 @@ export function availableJobsWhere(user: AppSessionUser): Prisma.JobWhereInput {
       ],
     },
   ];
+}
+
+export function availableJobsWhere(user: AppSessionUser): Prisma.JobWhereInput {
+  const rules = availableQueueBaseRules();
 
   if (user.role === "ADMIN") return { AND: rules };
 
@@ -120,6 +124,14 @@ export function availableJobsWhere(user: AppSessionUser): Prisma.JobWhereInput {
   }
 
   return { AND: rules };
+}
+
+export function visibleAvailableQueueJobsWhere(user: AppSessionUser): Prisma.JobWhereInput {
+  if (user.role === "ADMIN" || user.departmentCode === "QC") {
+    return { AND: availableQueueBaseRules() };
+  }
+
+  return availableJobsWhere(user);
 }
 
 export function visibleJobsWhere(user: AppSessionUser): Prisma.JobWhereInput {
