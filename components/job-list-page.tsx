@@ -77,18 +77,19 @@ export async function JobListPage({
   const { pageSize, pageSizeOption } = parsePageSize(searchParam(rawParams, "pageSize"));
   const page = toInt(searchParam(rawParams, "page"), 1);
   const pageParams = withPageSizeParam(params, pageSizeOption);
+  const savedDefaultFilters = effectivePreset.allJobs
+    ? parseDefaultJobFilters((await prisma.user.findUnique({
+        where: { id: user.id },
+        select: { defaultJobFilters: true },
+      }))?.defaultJobFilters)
+    : null;
   if (
     effectivePreset.allJobs &&
     params.get("defaultFilters") !== "off" &&
     !hasExplicitAllJobsFilters(params)
   ) {
-    const storedDefaults = await prisma.user.findUnique({
-      where: { id: user.id },
-      select: { defaultJobFilters: true },
-    });
-    const defaults = parseDefaultJobFilters(storedDefaults?.defaultJobFilters);
-    if (defaults) {
-      applyDefaultJobFilters(pageParams, defaults);
+    if (savedDefaultFilters) {
+      applyDefaultJobFilters(pageParams, savedDefaultFilters);
       pageParams.set("defaultFilters", "off");
     }
   }
@@ -268,6 +269,7 @@ export async function JobListPage({
         basePath={basePath}
         config={effectivePreset.tabs}
         departments={departments}
+        hasSavedDefaultFilters={Boolean(savedDefaultFilters)}
         hasPresetState={Boolean(effectivePreset.stateGroup || effectivePreset.stateSet || effectivePreset.stateNumbers?.length)}
         lockedMissing={effectivePreset.missing !== undefined}
         params={filterParams.toString()}
@@ -300,6 +302,7 @@ export async function JobListPage({
           isSupervisor={isSupervisor}
           showAssignmentAge={showAssignmentAge}
           showStateAge={showStateAge}
+          sortParams={filterParams.toString()}
           sortBy={sortBy ?? ""}
           sortDir={sortDir}
           jobs={jobs.map((j): JobRow => {

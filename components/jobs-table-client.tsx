@@ -60,6 +60,7 @@ export function JobsTableClient({
   showAssignmentAge = false,
   showStateAge = false,
   userWorkload = {},
+  sortParams,
   sortBy = "",
   sortDir = "asc",
 }: {
@@ -77,6 +78,7 @@ export function JobsTableClient({
   showAssignmentAge?: boolean;
   showStateAge?: boolean;
   userWorkload?: Record<string, Record<string, number>>;
+  sortParams?: string;
   sortBy?: string;
   sortDir?: "asc" | "desc";
 }) {
@@ -94,7 +96,7 @@ export function JobsTableClient({
   useEffect(() => setDisplayedJobs(jobs), [jobs]);
 
   function handleSort(col: string) {
-    const params = new URLSearchParams(searchParams.toString());
+    const params = new URLSearchParams(sortParams ?? searchParams.toString());
     if (params.get("sortBy") === col) {
       params.set("sortDir", params.get("sortDir") === "asc" ? "desc" : "asc");
     } else {

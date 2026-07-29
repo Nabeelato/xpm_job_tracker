@@ -33,5 +33,5 @@ export async function clearAllJobsDefaultFiltersAction() {
   });
 
   revalidatePath("/jobs");
-  redirect("/jobs?defaultFilters=off");
+  redirect("/jobs");
 }
