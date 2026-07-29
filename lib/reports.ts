@@ -3,7 +3,12 @@ import { NextResponse } from "next/server";
 import type { AssignmentRole, Prisma, UserRole } from "@prisma/client";
 import { exactStateWhere, stateGroupWhere, workflowStateWhere, xpmSubStateWhere, type JobStateGroup, type XpmSubState } from "@/lib/job-state";
 import { formatDateTime, titleCaseEnum } from "@/lib/utils";
-import { availableJobsWhere, visibleJobsWhere, type AppSessionUser } from "@/lib/rbac";
+import {
+  availableJobsWhere,
+  visibleAvailableQueueJobsWhere,
+  visibleJobsWhere,
+  type AppSessionUser,
+} from "@/lib/rbac";
 
 export const REPORT_EXPORT_LIMIT = 25_000;
 
@@ -192,7 +197,7 @@ export function buildJobReportWhere(
   const queueVacancy = param(params, "queueVacancy");
 
   if (myJobs === "true") and.push({ assignments: { some: { userId: user.id, active: true } } });
-  if (availableJobs === "true") and.push(availableJobsWhere(user));
+  if (availableJobs === "true") and.push(visibleAvailableQueueJobsWhere(user));
   if (availableJobs === "true") {
     if (queueVacancy === "MANAGER" || queueVacancy === "SUPERVISOR" || queueVacancy === "STAFF") {
       and.push({ assignments: { none: { active: true, assignmentRole: queueVacancy } } });
