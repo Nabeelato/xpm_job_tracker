@@ -17,7 +17,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { cn, formatDateTime, formatElapsedMilliseconds, titleCaseEnum } from "@/lib/utils";
 import { bulkOwnJobsAction, claimJobAction, releaseOwnJobAction } from "@/app/(app)/jobs/actions";
 
-type RoleUser = { id: string; name: string | null };
+type RoleUser = { id: string; name: string | null; supervisorId?: string | null };
 
 type Assignment = {
   id: string;
@@ -55,8 +55,7 @@ export function JobsTableClient({
   isMyJobs = false,
   managerUsers,
   supervisorUsers,
-  crossRoleStaffUsers,
-  staffBySupervisorId,
+  staffUsers,
   showAssignmentAge = false,
   showStateAge = false,
   userWorkload = {},
@@ -73,8 +72,7 @@ export function JobsTableClient({
   isMyJobs?: boolean;
   managerUsers: RoleUser[];
   supervisorUsers: RoleUser[];
-  crossRoleStaffUsers: RoleUser[];
-  staffBySupervisorId: Record<string, RoleUser[]>;
+  staffUsers: RoleUser[];
   showAssignmentAge?: boolean;
   showStateAge?: boolean;
   userWorkload?: Record<string, Record<string, number>>;
@@ -207,9 +205,7 @@ export function JobsTableClient({
         }}
         open={modalOpen}
         selectedJobs={selectedJobsForModal}
-        staffUsers={Array.from(new Map(
-          [...Object.values(staffBySupervisorId).flat(), ...crossRoleStaffUsers].map((staff) => [staff.id, staff]),
-        ).values()).sort((a, b) => (a.name ?? "").localeCompare(b.name ?? ""))}
+        staffUsers={staffUsers}
         supervisorUsers={supervisorUsers}
       />
 
@@ -218,7 +214,6 @@ export function JobsTableClient({
         if (!assigningJob) return null;
         return (
           <AssignSingleJobModal
-            currentUserId={currentUserId ?? ""}
             currentUserRole={currentUserRole}
             job={{
               id: assigningJob.id,
@@ -233,8 +228,7 @@ export function JobsTableClient({
               job.id === assigningJob.id ? { ...job, assignments } : job,
             ))}
             open={true}
-            crossRoleStaffUsers={crossRoleStaffUsers}
-            staffBySupervisorId={staffBySupervisorId}
+            staffUsers={staffUsers}
             supervisorUsers={supervisorUsers}
             userWorkload={userWorkload}
           />

@@ -12,7 +12,11 @@ import {
   type Prisma,
 } from "@prisma/client";
 import { prisma } from "@/lib/db";
-import { canAssignUserToRole, canManageJobAssignmentRole } from "@/lib/assignment-permissions";
+import {
+  canAssignUserToRole,
+  canManageJobAssignmentRole,
+  type AssignmentPermissionUser,
+} from "@/lib/assignment-permissions";
 import { syncBkDepartmentConflictNotifications } from "@/lib/bk-department-conflicts";
 import { syncMissingAssignmentExceptionNotifications } from "@/lib/job-exceptions";
 import { createNotification } from "@/lib/notifications";
@@ -40,6 +44,107 @@ function jobNotificationLabel(job: { jobName: string; client: { displayName: str
 
 function isExclusiveAssignmentRole(role: AssignmentRole) {
   return role === AssignmentRole.STAFF || role === AssignmentRole.SUPERVISOR;
+}
+
+async function getAssignableSupervisorForStaff(
+  actor: AssignmentPermissionUser,
+  staff: AssignmentPermissionUser,
+) {
+  if (staff.role !== "STAFF" || !staff.supervisorId) return null;
+
+  const supervisor = await prisma.user.findUnique({
+    where: { id: staff.supervisorId },
+    select: {
+      id: true,
+      name: true,
+      role: true,
+      departmentId: true,
+      supervisorId: true,
+      active: true,
+    },
+  });
+  if (
+    !supervisor?.active ||
+    !canAssignUserToRole(actor, supervisor, AssignmentRole.SUPERVISOR)
+  ) return null;
+
+  return supervisor;
+}
+
+async function ensureStaffSupervisorAssignment(
+  tx: Prisma.TransactionClient,
+  {
+    actor,
+    job,
+    staffName,
+    supervisor,
+  }: {
+    actor: { id: string; name?: string | null };
+    job: { id: string; jobName: string; client: { displayName: string } };
+    staffName?: string | null;
+    supervisor: { id: string; name: string | null };
+  },
+) {
+  const currentSupervisors = await tx.jobAssignment.findMany({
+    where: { jobId: job.id, assignmentRole: AssignmentRole.SUPERVISOR, active: true },
+    include: { user: { select: { name: true } } },
+    orderBy: { assignedAt: "desc" },
+  });
+  const existingSupervisor = currentSupervisors.find((assignment) => assignment.userId === supervisor.id);
+  const assignmentsToRemove = currentSupervisors.filter((assignment) => assignment.id !== existingSupervisor?.id);
+  const supervisorChanged = assignmentsToRemove.length > 0 || !existingSupervisor;
+
+  if (assignmentsToRemove.length) {
+    await tx.jobAssignment.updateMany({
+      where: { id: { in: assignmentsToRemove.map((assignment) => assignment.id) } },
+      data: { active: false },
+    });
+    for (const previous of assignmentsToRemove) {
+      await createNotification(tx, {
+        recipientId: previous.userId,
+        actorId: actor.id,
+        type: NotificationType.ASSIGNMENT_REMOVED,
+        title: "Supervisor assignment changed",
+        body: `${actor.name ?? "A manager"} removed your supervisor assignment from ${jobNotificationLabel(job)} because another staff member was assigned.`,
+        href: `/jobs/${job.id}`,
+        jobId: job.id,
+      });
+    }
+  }
+
+  if (!existingSupervisor) {
+    await tx.jobAssignment.create({
+      data: {
+        jobId: job.id,
+        userId: supervisor.id,
+        assignmentRole: AssignmentRole.SUPERVISOR,
+        assignmentSource: AssignmentSource.MANUAL,
+        assignedById: actor.id,
+      },
+    });
+    await createNotification(tx, {
+      recipientId: supervisor.id,
+      actorId: actor.id,
+      type: NotificationType.ASSIGNMENT_ADDED,
+      title: "Job assigned",
+      body: `${actor.name ?? "A manager"} automatically assigned ${jobNotificationLabel(job)} to you as supervisor for ${staffName ?? "the selected staff member"}.`,
+      href: `/jobs/${job.id}`,
+      jobId: job.id,
+    });
+  }
+
+  if (supervisorChanged) {
+    await tx.jobChangeLog.create({
+      data: {
+        jobId: job.id,
+        changedById: actor.id,
+        changeSource: ChangeSource.USER,
+        fieldName: "supervisor_assignment",
+        oldValue: currentSupervisors.map((assignment) => assignment.user.name).filter(Boolean).join(", ") || null,
+        newValue: supervisor.name,
+      },
+    });
+  }
 }
 
 async function getVisibleJobOrRedirect(jobId: string) {
@@ -222,8 +327,22 @@ export async function assignJobAction(formData: FormData) {
     activeAssignments: job.assignments,
     operation: "ASSIGN",
   })) redirect(user.role === "MANAGER" ? "/jobs/my" : "/dashboard");
+  const automaticSupervisor = assignmentRole === AssignmentRole.STAFF
+    ? await getAssignableSupervisorForStaff(user, assignee)
+    : null;
+  if (assignmentRole === AssignmentRole.STAFF && !automaticSupervisor) {
+    redirect(user.role === "MANAGER" ? "/jobs/my" : "/dashboard");
+  }
 
   await prisma.$transaction(async (tx) => {
+    if (automaticSupervisor) {
+      await ensureStaffSupervisorAssignment(tx, {
+        actor: user,
+        job,
+        staffName: assignee.name,
+        supervisor: automaticSupervisor,
+      });
+    }
     const existing = await tx.jobAssignment.findFirst({
       where: { jobId, userId, assignmentRole, active: true },
     });
@@ -468,9 +587,24 @@ export async function toggleJobAssignmentAction(formData: FormData) {
     activeAssignments: job.assignments,
     operation: shouldAssign ? "ASSIGN" : "REMOVE",
   })) redirect("/dashboard");
+  const shouldAssignSupervisor = shouldAssign &&
+    assignmentRole === AssignmentRole.STAFF &&
+    (user.role === "ADMIN" || user.role === "MANAGER");
+  const automaticSupervisor = shouldAssignSupervisor
+    ? await getAssignableSupervisorForStaff(user, assignee)
+    : null;
+  if (shouldAssignSupervisor && !automaticSupervisor) redirect("/dashboard");
 
   await prisma.$transaction(async (tx) => {
     if (shouldAssign) {
+      if (automaticSupervisor) {
+        await ensureStaffSupervisorAssignment(tx, {
+          actor: user,
+          job,
+          staffName: assignee.name,
+          supervisor: automaticSupervisor,
+        });
+      }
       await tx.jobAssignment.create({
         data: {
           jobId,
@@ -597,7 +731,18 @@ export async function setJobRoleAssignmentAction(formData: FormData) {
     activeAssignments,
     operation: "REMOVE",
   }));
-  if (!canRemoveExisting || !canAssignNext || !canClearStaff) redirect("/dashboard");
+  const shouldAssignSupervisor = Boolean(assignee) &&
+    assignmentRole === AssignmentRole.STAFF &&
+    isManagerLevel;
+  const automaticSupervisor = shouldAssignSupervisor && assignee
+    ? await getAssignableSupervisorForStaff(user, assignee)
+    : null;
+  if (
+    !canRemoveExisting ||
+    !canAssignNext ||
+    !canClearStaff ||
+    (shouldAssignSupervisor && !automaticSupervisor)
+  ) redirect("/dashboard");
 
   await prisma.$transaction(async (tx) => {
     if (assignmentsToRemove.length) {
@@ -640,6 +785,14 @@ export async function setJobRoleAssignmentAction(formData: FormData) {
     }
 
     if (userId && assignee) {
+      if (automaticSupervisor) {
+        await ensureStaffSupervisorAssignment(tx, {
+          actor: user,
+          job,
+          staffName: assignee.name,
+          supervisor: automaticSupervisor,
+        });
+      }
       await tx.jobAssignment.create({
         data: {
           jobId,
@@ -774,6 +927,12 @@ export async function bulkAssignJobRolesAction(formData: FormData) {
   if (operation === "ASSIGN") {
     if (!targetUser?.active || !role || !canAssignUserToRole(user, targetUser, role)) return;
   }
+  const automaticSupervisor = operation === "ASSIGN" &&
+    role === AssignmentRole.STAFF &&
+    targetUser
+    ? await getAssignableSupervisorForStaff(user, targetUser)
+    : null;
+  if (operation === "ASSIGN" && role === AssignmentRole.STAFF && !automaticSupervisor) return;
 
   const jobs = await prisma.job.findMany({
     where: { id: { in: jobIds } },
@@ -800,6 +959,14 @@ export async function bulkAssignJobRolesAction(formData: FormData) {
           (assignment) => assignment.assignmentRole === role && assignment.userId !== targetUser.id,
         );
         if (exclusiveRoleOccupied) continue;
+        if (automaticSupervisor) {
+          await ensureStaffSupervisorAssignment(tx, {
+            actor: user,
+            job,
+            staffName: targetUser.name,
+            supervisor: automaticSupervisor,
+          });
+        }
         if (!alreadyAssigned) {
           await tx.jobAssignment.create({
             data: {
