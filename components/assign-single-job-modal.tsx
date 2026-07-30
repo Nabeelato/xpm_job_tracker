@@ -1,13 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toggleJobAssignmentAction } from "@/app/(app)/jobs/actions";
 import { Button } from "@/components/ui/button";
 
 type AssignmentRole = "MANAGER" | "SUPERVISOR" | "STAFF";
 type UserRole = "ADMIN" | "MANAGER" | "SUPERVISOR" | "STAFF";
-type RoleUser = { id: string; name: string | null; disabled?: boolean };
+type RoleUser = { id: string; name: string | null; supervisorId?: string | null; disabled?: boolean };
 type Assignment = {
   id: string;
   assignmentRole: string;
@@ -27,12 +27,10 @@ export function AssignSingleJobModal({
   onClose,
   onAssignmentsChange,
   job,
-  currentUserId,
   currentUserRole,
   managerUsers,
   supervisorUsers,
-  crossRoleStaffUsers,
-  staffBySupervisorId,
+  staffUsers,
   userWorkload,
 }: {
   open: boolean;
@@ -45,12 +43,10 @@ export function AssignSingleJobModal({
     departmentCode: string;
     assignments: Assignment[];
   };
-  currentUserId: string;
   currentUserRole: UserRole;
   managerUsers: RoleUser[];
   supervisorUsers: RoleUser[];
-  crossRoleStaffUsers: RoleUser[];
-  staffBySupervisorId: Record<string, RoleUser[]>;
+  staffUsers: RoleUser[];
   userWorkload: Record<string, Record<string, number>>;
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
@@ -66,28 +62,29 @@ export function AssignSingleJobModal({
     if (!open && dialog.open) dialog.close();
   }, [open]);
 
-  const assignedSupervisorIds = assignments
-    .filter((assignment) => assignment.assignmentRole === "SUPERVISOR")
-    .map((assignment) => assignment.user.id);
-  const staffUsers = useMemo(() => {
-    const supervisorIds = currentUserRole === "SUPERVISOR" ? [currentUserId] : assignedSupervisorIds;
-    const unique = new Map<string, RoleUser>();
-    for (const supervisorId of supervisorIds) {
-      for (const staff of staffBySupervisorId[supervisorId] ?? []) unique.set(staff.id, staff);
-    }
-    for (const candidate of crossRoleStaffUsers) unique.set(candidate.id, candidate);
-    return [...unique.values()].sort((a, b) => (a.name ?? "").localeCompare(b.name ?? ""));
-  }, [assignedSupervisorIds.join(","), crossRoleStaffUsers, currentUserId, currentUserRole, staffBySupervisorId]);
-
   async function toggle(role: AssignmentRole, target: RoleUser, checked: boolean) {
     const key = `${role}:${target.id}`;
     setSavingKey(key);
-    const nextAssignments = checked
+    let nextAssignments = checked
       ? [
           ...assignments.filter((assignment) => role === "MANAGER" || assignment.assignmentRole !== role),
           { id: `pending-${key}`, assignedAt: new Date(), assignmentRole: role, user: target },
         ]
       : assignments.filter((assignment) => !(assignment.assignmentRole === role && assignment.user.id === target.id));
+    if (checked && role === "STAFF" && target.supervisorId) {
+      const supervisor = supervisorUsers.find((candidate) => candidate.id === target.supervisorId);
+      if (supervisor) {
+        nextAssignments = [
+          ...nextAssignments.filter((assignment) => assignment.assignmentRole !== "SUPERVISOR"),
+          {
+            id: `pending-SUPERVISOR:${supervisor.id}`,
+            assignedAt: new Date(),
+            assignmentRole: "SUPERVISOR",
+            user: supervisor,
+          },
+        ];
+      }
+    }
     setAssignments(nextAssignments);
     onAssignmentsChange?.(nextAssignments);
 
@@ -170,8 +167,8 @@ export function AssignSingleJobModal({
           <RoleChecklist role="SUPERVISOR" users={supervisorUsers} />
           <RoleChecklist role="STAFF" users={staffUsers} />
           <p className="text-xs text-muted-foreground">A job can have multiple managers, but only one supervisor and one staff member.</p>
-          {currentUserRole !== "SUPERVISOR" && assignedSupervisorIds.length === 0 && crossRoleStaffUsers.length === 0 ? (
-            <p className="text-xs text-muted-foreground">Assign at least one supervisor to select staff from their teams.</p>
+          {currentUserRole !== "SUPERVISOR" ? (
+            <p className="text-xs text-muted-foreground">Selecting staff automatically assigns their configured supervisor.</p>
           ) : null}
         </div>
 

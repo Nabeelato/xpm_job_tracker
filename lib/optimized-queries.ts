@@ -1,6 +1,6 @@
 import { Prisma, type BookkeepingBy, type BookkeepingSoftware, type ClientCategory } from "@prisma/client";
 import { prisma } from "@/lib/db";
-import type { AppSessionUser } from "@/lib/rbac";
+import { isXpmOnlyJobViewer, type AppSessionUser } from "@/lib/rbac";
 
 export type DashboardMetrics = {
   totalJobs: number;
@@ -80,6 +80,12 @@ function toNumber(value: CountValue) {
 
 function scopedJobsSql(user: AppSessionUser, scope: JobDataScope = "visible") {
   if (user.role === "ADMIN" || user.departmentCode === "QC") return Prisma.sql`TRUE`;
+  if (isXpmOnlyJobViewer(user)) {
+    const sourceManagerName = user.name?.trim();
+    return sourceManagerName
+      ? Prisma.sql`LOWER(BTRIM(COALESCE(j.source_manager_name, ''))) = LOWER(${sourceManagerName})`
+      : Prisma.sql`FALSE`;
+  }
 
   if (scope === "report" && user.role === "MANAGER") {
     if (!user.departmentId) {

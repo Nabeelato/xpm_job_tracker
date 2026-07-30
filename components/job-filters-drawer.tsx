@@ -336,6 +336,7 @@ export function JobFilters({
   basePath,
   config,
   departments,
+  hasSavedDefaultFilters = false,
   hasPresetState = false,
   lockedMissing = false,
   params,
@@ -345,6 +346,7 @@ export function JobFilters({
   basePath: string;
   config?: JobTabsConfig;
   departments: Array<{ id: string; code: string; name: string }>;
+  hasSavedDefaultFilters?: boolean;
   hasPresetState?: boolean;
   lockedMissing?: boolean;
   params: string;
@@ -862,12 +864,24 @@ export function JobFilters({
                     Save the selected departments and states for your account. They will be applied when you open All Jobs.
                   </p>
                   <div className="mt-3 flex flex-wrap gap-2">
-                    <Button formAction={saveAllJobsDefaultFiltersAction} type="submit" variant="outline">
-                      Save as my default
+                    <Button
+                      formAction={saveAllJobsDefaultFiltersAction}
+                      loadingLabel="Saving..."
+                      type="submit"
+                      variant="outline"
+                    >
+                      {hasSavedDefaultFilters ? "Update my default" : "Save as my default"}
                     </Button>
-                    <Button formAction={clearAllJobsDefaultFiltersAction} type="submit" variant="ghost">
-                      Clear my default
-                    </Button>
+                    {hasSavedDefaultFilters ? (
+                      <Button
+                        formAction={clearAllJobsDefaultFiltersAction}
+                        loadingLabel="Clearing..."
+                        type="submit"
+                        variant="ghost"
+                      >
+                        Clear my default
+                      </Button>
+                    ) : null}
                   </div>
                 </div>
               ) : null}

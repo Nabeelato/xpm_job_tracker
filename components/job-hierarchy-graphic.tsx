@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { BriefcaseBusiness, Clock3, Network, UserRound, UsersRound } from "lucide-react";
+import { BriefcaseBusiness, ChevronDown, Clock3, Network, UserRound, UsersRound } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatElapsedTime, titleCaseEnum } from "@/lib/utils";
@@ -26,24 +26,33 @@ export type HierarchyPerson = {
 function JobRows({ jobs }: { jobs: HierarchyJob[] }) {
   if (!jobs.length) return <p className="mt-2 text-xs text-muted-foreground">No current assigned jobs.</p>;
   return (
-    <div className="mt-2 space-y-1.5">
-      {jobs.map((job) => (
-        <Link
-          className="grid gap-1 rounded-md border bg-white px-3 py-2 text-xs transition hover:border-primary/40 hover:bg-primary/5 sm:grid-cols-[1fr_auto]"
-          href={`/jobs/${job.id}`}
-          key={job.id}
-        >
-          <span>
-            <span className="font-semibold text-foreground">{job.jobIdFromExcel} — {job.jobName}</span>
-            <span className="mt-0.5 block text-muted-foreground">{job.clientName} · State {job.stateNumber ?? "—"}</span>
-          </span>
-          <span className="flex items-center gap-1 whitespace-nowrap text-muted-foreground">
-            <Clock3 className="h-3.5 w-3.5" />
-            {job.workingSince ? `Working ${formatElapsedTime(job.workingSince)}` : `Assigned ${formatElapsedTime(job.assignedAt)}`}
-          </span>
-        </Link>
-      ))}
-    </div>
+    <details className="group mt-2">
+      <summary className="flex cursor-pointer list-none items-center justify-between rounded-md border border-dashed bg-white/70 px-3 py-2 text-xs font-medium text-muted-foreground hover:bg-white [&::-webkit-details-marker]:hidden">
+        <span>{jobs.length} current assigned job{jobs.length === 1 ? "" : "s"}</span>
+        <span className="flex items-center gap-1">
+          Show jobs
+          <ChevronDown className="h-3.5 w-3.5 transition-transform group-open:rotate-180" />
+        </span>
+      </summary>
+      <div className="mt-2 space-y-1.5">
+        {jobs.map((job) => (
+          <Link
+            className="grid gap-1 rounded-md border bg-white px-3 py-2 text-xs transition hover:border-primary/40 hover:bg-primary/5 sm:grid-cols-[1fr_auto]"
+            href={`/jobs/${job.id}`}
+            key={job.id}
+          >
+            <span>
+              <span className="font-semibold text-foreground">{job.jobIdFromExcel} — {job.jobName}</span>
+              <span className="mt-0.5 block text-muted-foreground">{job.clientName} · State {job.stateNumber ?? "—"}</span>
+            </span>
+            <span className="flex items-center gap-1 whitespace-nowrap text-muted-foreground">
+              <Clock3 className="h-3.5 w-3.5" />
+              {job.workingSince ? `Working ${formatElapsedTime(job.workingSince)}` : `Assigned ${formatElapsedTime(job.assignedAt)}`}
+            </span>
+          </Link>
+        ))}
+      </div>
+    </details>
   );
 }
 

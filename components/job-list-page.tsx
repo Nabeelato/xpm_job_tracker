@@ -77,18 +77,19 @@ export async function JobListPage({
   const { pageSize, pageSizeOption } = parsePageSize(searchParam(rawParams, "pageSize"));
   const page = toInt(searchParam(rawParams, "page"), 1);
   const pageParams = withPageSizeParam(params, pageSizeOption);
+  const savedDefaultFilters = effectivePreset.allJobs
+    ? parseDefaultJobFilters((await prisma.user.findUnique({
+        where: { id: user.id },
+        select: { defaultJobFilters: true },
+      }))?.defaultJobFilters)
+    : null;
   if (
     effectivePreset.allJobs &&
     params.get("defaultFilters") !== "off" &&
     !hasExplicitAllJobsFilters(params)
   ) {
-    const storedDefaults = await prisma.user.findUnique({
-      where: { id: user.id },
-      select: { defaultJobFilters: true },
-    });
-    const defaults = parseDefaultJobFilters(storedDefaults?.defaultJobFilters);
-    if (defaults) {
-      applyDefaultJobFilters(pageParams, defaults);
+    if (savedDefaultFilters) {
+      applyDefaultJobFilters(pageParams, savedDefaultFilters);
       pageParams.set("defaultFilters", "off");
     }
   }
@@ -186,16 +187,21 @@ export async function JobListPage({
       : user.role === "SUPERVISOR" && currentUserOption
         ? [currentUserOption]
         : [];
-  const crossRoleStaffUsers: Array<{ id: string; name: string | null }> = [];
-
-  const staffBySupId = new Map<string, { id: string; name: string | null }[]>();
-  for (const u of users) {
-    if (u.role === "STAFF" && u.supervisorId) {
-      const list = staffBySupId.get(u.supervisorId) ?? [];
-      list.push({ id: u.id, name: u.name });
-      staffBySupId.set(u.supervisorId, list);
-    }
-  }
+  const eligibleSupervisorIds = new Set(supervisorUsers.map((candidate) => candidate.id));
+  const staffUsers = users
+    .filter((candidate) =>
+      candidate.role === "STAFF" &&
+      Boolean(candidate.supervisorId) &&
+      eligibleSupervisorIds.has(candidate.supervisorId!) &&
+      (isAdmin ||
+        (user.role === "MANAGER" && isSameDepartment(candidate)) ||
+        (user.role === "SUPERVISOR" && candidate.supervisorId === user.id)),
+    )
+    .map((candidate) => ({
+      id: candidate.id,
+      name: candidate.name,
+      supervisorId: candidate.supervisorId,
+    }));
 
   // Build workload map: userId → { deptCode: count }
   const userWorkload: Record<string, Record<string, number>> = {};
@@ -268,6 +274,7 @@ export async function JobListPage({
         basePath={basePath}
         config={effectivePreset.tabs}
         departments={departments}
+        hasSavedDefaultFilters={Boolean(savedDefaultFilters)}
         hasPresetState={Boolean(effectivePreset.stateGroup || effectivePreset.stateSet || effectivePreset.stateNumbers?.length)}
         lockedMissing={effectivePreset.missing !== undefined}
         params={filterParams.toString()}
@@ -300,6 +307,7 @@ export async function JobListPage({
           isSupervisor={isSupervisor}
           showAssignmentAge={showAssignmentAge}
           showStateAge={showStateAge}
+          sortParams={filterParams.toString()}
           sortBy={sortBy ?? ""}
           sortDir={sortDir}
           jobs={jobs.map((j): JobRow => {
@@ -323,9 +331,8 @@ export async function JobListPage({
               assignments: j.assignments,
             };
           })}
-          crossRoleStaffUsers={crossRoleStaffUsers}
           managerUsers={managerUsers}
-          staffBySupervisorId={Object.fromEntries(staffBySupId)}
+          staffUsers={staffUsers}
           supervisorUsers={supervisorUsers}
           userWorkload={userWorkload}
         />

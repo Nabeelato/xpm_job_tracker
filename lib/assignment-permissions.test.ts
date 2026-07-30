@@ -62,7 +62,7 @@ test("supervisors can assign only their direct staff on supervised jobs", () => 
   }), false);
 });
 
-test("managers must own the job and can assign relevant staff only", () => {
+test("managers must own the job but can assign staff before their supervisor is on it", () => {
   assert.equal(canManageJobAssignmentRole({
     actor: manager,
     assignee: staff,
@@ -76,7 +76,7 @@ test("managers must own the job and can assign relevant staff only", () => {
     assignmentRole: "STAFF",
     activeAssignments: [{ userId: manager.id, assignmentRole: "MANAGER" }],
     operation: "ASSIGN",
-  }), false);
+  }), true);
   assert.equal(canManageJobAssignmentRole({
     actor: manager,
     assignee: staff,
@@ -87,4 +87,14 @@ test("managers must own the job and can assign relevant staff only", () => {
     ],
     operation: "ASSIGN",
   }), true);
+});
+
+test("staff without a configured supervisor cannot be assigned", () => {
+  assert.equal(canManageJobAssignmentRole({
+    actor: admin,
+    assignee: { ...staff, supervisorId: null },
+    assignmentRole: "STAFF",
+    activeAssignments: [],
+    operation: "ASSIGN",
+  }), false);
 });

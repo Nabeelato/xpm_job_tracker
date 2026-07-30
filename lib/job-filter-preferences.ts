@@ -41,8 +41,6 @@ const explicitAllJobsFilterKeys = [
   "stateNumbers",
   "jobStateNumber",
   "clientCategory",
-  "sortBy",
-  "sortDir",
   "priority",
   "sourceManager",
   "sourcePartner",

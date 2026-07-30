@@ -8,6 +8,7 @@ import { isWorkflowJobState, workflowStateWhere } from "@/lib/job-state";
 
 export type AppSessionUser = {
   id: string;
+  username?: string | null;
   role: UserRole;
   departmentId?: string | null;
   departmentCode?: string | null;
@@ -25,6 +26,7 @@ export const getCurrentUser = cache(async (): Promise<AppSessionUser | null> => 
     select: {
       id: true,
       name: true,
+      username: true,
       email: true,
       role: true,
       departmentId: true,
@@ -38,6 +40,7 @@ export const getCurrentUser = cache(async (): Promise<AppSessionUser | null> => 
 
   return {
     id: user.id,
+    username: user.username,
     role: user.role,
     departmentId: user.departmentId,
     departmentCode: user.department?.code ?? null,
@@ -81,6 +84,17 @@ export function assignmentRoleForUser(role: UserRole): AssignmentRole {
   return AssignmentRole.MANAGER;
 }
 
+export function isXpmOnlyJobViewer(user: AppSessionUser) {
+  return user.username?.trim().toLowerCase() === "faizan.ali";
+}
+
+export function xpmSourceManagerJobsWhere(user: AppSessionUser): Prisma.JobWhereInput {
+  const sourceManagerName = user.name?.trim();
+  return sourceManagerName
+    ? { sourceManagerName: { equals: sourceManagerName, mode: "insensitive" } }
+    : { id: "__no_xpm_source_manager_name__" };
+}
+
 function availableQueueBaseRules(): Prisma.JobWhereInput[] {
   return [
     workflowStateWhere(),
@@ -105,7 +119,9 @@ export function availableJobsWhere(user: AppSessionUser): Prisma.JobWhereInput {
     },
   });
 
-  if (user.departmentCode !== "QC") {
+  if (isXpmOnlyJobViewer(user)) {
+    rules.push(xpmSourceManagerJobsWhere(user));
+  } else if (user.departmentCode !== "QC") {
     if (!user.departmentId) return { id: "__no_department__" };
     rules.push({ finalDepartmentId: user.departmentId });
   }
@@ -136,6 +152,7 @@ export function visibleAvailableQueueJobsWhere(user: AppSessionUser): Prisma.Job
 
 export function visibleJobsWhere(user: AppSessionUser): Prisma.JobWhereInput {
   if (user.role === "ADMIN" || user.departmentCode === "QC") return {};
+  if (isXpmOnlyJobViewer(user)) return xpmSourceManagerJobsWhere(user);
   if (user.role === "MANAGER") {
     return user.departmentId ? { finalDepartmentId: user.departmentId } : { id: "__no_department__" };
   }
@@ -154,6 +171,7 @@ export function canWriteDiary(user: AppSessionUser) {
 type InteractiveJob = {
   assignments: Array<{ userId: string; assignmentRole: AssignmentRole }>;
   finalDepartmentId?: string;
+  sourceManagerName?: string | null;
   jobStateNumber?: number | null;
   xpmState?: string | null;
   archived?: boolean;
@@ -161,6 +179,10 @@ type InteractiveJob = {
 
 export function canInteractWithJob(user: AppSessionUser, job: InteractiveJob) {
   if (user.role === "ADMIN" || user.departmentCode === "QC") return true;
+  if (isXpmOnlyJobViewer(user)) {
+    const expectedManager = user.name?.trim().toLowerCase();
+    return Boolean(expectedManager && job.sourceManagerName?.trim().toLowerCase() === expectedManager);
+  }
   if (job.assignments.some((assignment) => assignment.userId === user.id)) return true;
   const departmentMatches = Boolean(user.departmentId) && job.finalDepartmentId === user.departmentId;
   if (user.role === "MANAGER" && departmentMatches) return true;

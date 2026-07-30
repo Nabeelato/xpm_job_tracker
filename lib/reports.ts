@@ -5,8 +5,10 @@ import { exactStateWhere, stateGroupWhere, workflowStateWhere, xpmSubStateWhere,
 import { formatDateTime, titleCaseEnum } from "@/lib/utils";
 import {
   availableJobsWhere,
+  isXpmOnlyJobViewer,
   visibleAvailableQueueJobsWhere,
   visibleJobsWhere,
+  xpmSourceManagerJobsWhere,
   type AppSessionUser,
 } from "@/lib/rbac";
 
@@ -117,6 +119,7 @@ function stateFilterWhere(value: string | undefined): Prisma.JobWhereInput | nul
 
 export function reportScopeWhere(user: AppSessionUser): Prisma.JobWhereInput {
   if (user.role === "ADMIN" || user.departmentCode === "QC") return {};
+  if (isXpmOnlyJobViewer(user)) return xpmSourceManagerJobsWhere(user);
 
   if (user.role === "MANAGER") {
     const scoped: Prisma.JobWhereInput[] = [

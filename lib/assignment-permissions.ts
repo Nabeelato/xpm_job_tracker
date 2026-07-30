@@ -55,10 +55,9 @@ export function canManageJobAssignmentRole({
   operation: "ASSIGN" | "REMOVE";
 }) {
   if (operation === "ASSIGN" && assignmentRole === "STAFF") {
-    const assignedSupervisorIds = activeAssignments
-      .filter((assignment) => assignment.assignmentRole === "SUPERVISOR")
-      .map((assignment) => assignment.userId);
-    if (!assignee.supervisorId || !assignedSupervisorIds.includes(assignee.supervisorId)) return false;
+    // Staff must have a configured supervisor so manager-level assignments can
+    // add that supervisor to the job automatically.
+    if (!assignee.supervisorId) return false;
   }
 
   if (actor.role === "ADMIN") {

@@ -3,6 +3,7 @@ import test from "node:test";
 import type { AppSessionUser } from "@/lib/rbac";
 import {
   availableJobsWhere,
+  canInteractWithJob,
   visibleAvailableQueueJobsWhere,
   visibleJobsWhere,
 } from "@/lib/rbac";
@@ -48,4 +49,34 @@ test("non-QC available queues remain department and role scoped", () => {
 
   assert.match(serialized, /vat-department/);
   assert.match(serialized, /SUPERVISOR/);
+});
+
+test("Faizan sees only jobs attributed to him by XPM", () => {
+  const faizan = user({
+    id: "faizan-id",
+    username: "faizan.ali",
+    name: "Faizan Ali",
+    role: "MANAGER",
+    departmentCode: "VAT",
+    departmentId: "vat-department",
+  });
+
+  assert.deepEqual(visibleJobsWhere(faizan), {
+    sourceManagerName: { equals: "Faizan Ali", mode: "insensitive" },
+  });
+  assert.match(JSON.stringify(availableJobsWhere(faizan)), /Faizan Ali/);
+  assert.doesNotMatch(JSON.stringify(availableJobsWhere(faizan)), /vat-department/);
+});
+
+test("Faizan cannot bypass XPM visibility with a direct job URL", () => {
+  const faizan = user({ username: "faizan.ali", name: "Faizan Ali", role: "MANAGER" });
+  const baseJob = {
+    assignments: [{ userId: faizan.id, assignmentRole: "MANAGER" as const }],
+    finalDepartmentId: faizan.departmentId ?? undefined,
+    jobStateNumber: 4,
+    archived: false,
+  };
+
+  assert.equal(canInteractWithJob(faizan, { ...baseJob, sourceManagerName: "Faizan Ali" }), true);
+  assert.equal(canInteractWithJob(faizan, { ...baseJob, sourceManagerName: "Maaz Imran" }), false);
 });

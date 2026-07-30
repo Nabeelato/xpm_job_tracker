@@ -86,7 +86,7 @@ export function AssignJobsModal({ open, onClose, selectedJobs, managerUsers, sup
             </Select>
           </label> : null}
           <p className="rounded-md bg-muted p-3 text-xs text-muted-foreground">
-            Managers can be added alongside existing managers. Staff and supervisor assignments are limited to one per job, so occupied roles are skipped. Unassign can remove one user, a complete role, or every assignment.
+            Managers can be added alongside existing managers. Selecting staff also assigns their configured supervisor. Staff and supervisor assignments are limited to one per job, so occupied staff roles are skipped. Unassign can remove one user, a complete role, or every assignment.
           </p>
           <div className="flex justify-end gap-2">
             <Button disabled={isPending} onClick={onClose} type="button" variant="outline">Cancel</Button>

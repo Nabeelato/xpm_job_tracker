@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import bcrypt from "bcryptjs";
 import { AssignmentRole, AssignmentSource, ChangeSource, InternalStatus, UserRole } from "@prisma/client";
+import { canAssignUserToRole } from "@/lib/assignment-permissions";
 import { prisma } from "@/lib/db";
 import { syncMissingAssignmentExceptionNotifications } from "@/lib/job-exceptions";
 import { requireRole } from "@/lib/rbac";
@@ -328,12 +329,27 @@ export async function transferAssignmentsAction(
     prisma.user.findUnique({ where: { id: fromUserId }, select: { id: true, name: true } }),
     prisma.user.findUnique({
       where: { id: toUserId },
-      select: { id: true, name: true, active: true },
+      select: { id: true, name: true, active: true, role: true, departmentId: true, supervisorId: true },
     }),
   ]);
   if (!fromUser) return { ok: false, error: "Source user not found." };
   if (!toUser) return { ok: false, error: "Target user not found." };
   if (!toUser.active) return { ok: false, error: "Target user is inactive. Activate them first." };
+
+  const sourceAssignmentRoles = await prisma.jobAssignment.findMany({
+    where: { userId: fromUserId, active: true },
+    distinct: ["assignmentRole"],
+    select: { assignmentRole: true },
+  });
+  const incompatibleRole = sourceAssignmentRoles.find(
+    ({ assignmentRole }) => !canAssignUserToRole(admin, toUser, assignmentRole),
+  );
+  if (incompatibleRole) {
+    return {
+      ok: false,
+      error: `Target user cannot receive ${incompatibleRole.assignmentRole.toLowerCase()} assignments. Choose a user with the matching system role.`,
+    };
+  }
 
   let transferred = 0;
   let merged = 0;
