@@ -8,6 +8,12 @@ import {
 
 const admin: AssignmentPermissionUser = { id: "admin", role: "ADMIN", departmentId: "vat" };
 const manager: AssignmentPermissionUser = { id: "manager", role: "MANAGER", departmentId: "vat" };
+const qcManager: AssignmentPermissionUser = {
+  id: "qc-manager",
+  role: "MANAGER",
+  departmentId: "qc",
+  departmentCode: "QC",
+};
 const otherManager: AssignmentPermissionUser = { id: "manager-2", role: "MANAGER", departmentId: "vat" };
 const supervisor: AssignmentPermissionUser = { id: "supervisor", role: "SUPERVISOR", departmentId: "vat" };
 const otherSupervisor: AssignmentPermissionUser = { id: "supervisor-2", role: "SUPERVISOR", departmentId: "vat" };
@@ -85,6 +91,23 @@ test("managers must own the job but can assign staff before their supervisor is 
       { userId: manager.id, assignmentRole: "MANAGER" },
       { userId: supervisor.id, assignmentRole: "SUPERVISOR" },
     ],
+    operation: "ASSIGN",
+  }), true);
+});
+
+test("QC managers can directly assign eligible staff on any visible job", () => {
+  assert.equal(canManageJobAssignmentRole({
+    actor: qcManager,
+    assignee: staff,
+    assignmentRole: "STAFF",
+    activeAssignments: [],
+    operation: "ASSIGN",
+  }), true);
+  assert.equal(canManageJobAssignmentRole({
+    actor: qcManager,
+    assignee: supervisor,
+    assignmentRole: "SUPERVISOR",
+    activeAssignments: [],
     operation: "ASSIGN",
   }), true);
 });

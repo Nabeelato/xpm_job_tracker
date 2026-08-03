@@ -172,13 +172,14 @@ export async function JobListPage({
 
   const isAdmin = user.role === "ADMIN";
   const isSupervisor = user.role === "SUPERVISOR";
+  const hasGlobalAssignmentScope = isAdmin || (user.role === "MANAGER" && user.departmentCode === "QC");
   const isSameDepartment = (candidate: (typeof users)[number]) =>
     Boolean(user.departmentId) && candidate.departmentId === user.departmentId;
   const currentUserOption = users.find((candidate) => candidate.id === user.id);
   const managerUsers = users.filter((candidate) =>
-    managerUserRoles.includes(candidate.role) && (isAdmin || isSameDepartment(candidate)),
+    managerUserRoles.includes(candidate.role) && (hasGlobalAssignmentScope || isSameDepartment(candidate)),
   );
-  const supervisorUsers = isAdmin
+  const supervisorUsers = hasGlobalAssignmentScope
     ? users.filter((candidate) => candidate.role === "SUPERVISOR")
     : user.role === "MANAGER"
       ? users.filter((candidate) =>
@@ -193,7 +194,7 @@ export async function JobListPage({
       candidate.role === "STAFF" &&
       Boolean(candidate.supervisorId) &&
       eligibleSupervisorIds.has(candidate.supervisorId!) &&
-      (isAdmin ||
+      (hasGlobalAssignmentScope ||
         (user.role === "MANAGER" && isSameDepartment(candidate)) ||
         (user.role === "SUPERVISOR" && candidate.supervisorId === user.id)),
     )
