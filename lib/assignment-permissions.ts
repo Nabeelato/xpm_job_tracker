@@ -4,6 +4,7 @@ export type AssignmentPermissionUser = {
   id: string;
   role: UserRole;
   departmentId?: string | null;
+  departmentCode?: string | null;
   supervisorId?: string | null;
 };
 
@@ -30,7 +31,10 @@ export function canAssignUserToRole(
   }
 
   if (actor.role === "MANAGER") {
-    if (!actor.departmentId || assignee.departmentId !== actor.departmentId) return false;
+    const hasGlobalAssignmentScope = actor.departmentCode === "QC";
+    if (!hasGlobalAssignmentScope && (!actor.departmentId || assignee.departmentId !== actor.departmentId)) {
+      return false;
+    }
     return isNativeRoleMatch(assignee, assignmentRole);
   }
 
@@ -65,8 +69,9 @@ export function canManageJobAssignmentRole({
   }
 
   if (actor.role === "MANAGER") {
+    const hasGlobalAssignmentScope = actor.departmentCode === "QC";
     const ownsJob = activeAssignments.some((assignment) => assignment.userId === actor.id);
-    return ownsJob && canAssignUserToRole(actor, assignee, assignmentRole);
+    return (hasGlobalAssignmentScope || ownsJob) && canAssignUserToRole(actor, assignee, assignmentRole);
   }
 
   if (actor.role === "SUPERVISOR") {
