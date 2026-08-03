@@ -227,7 +227,6 @@ async function main() {
     ["Ahmad Raza", "ahmad.raza1"],
     ["Ayesha Ibrahim", "ayesha.ibrahim"],
     ["Muhammad Abdullah", "muhammad.abdullah"],
-    ["Saim Amjad", "saim.amjad"],
     ["Jawad Khan", "jawad.khan"],
     ["Kinza Saboor", "kinza.saboor"],
     ["Zainab Tariq", "zainab.tariq"],
@@ -248,6 +247,8 @@ async function main() {
     return upsertUser({ name, username, role: UserRole.STAFF, departmentCode, supervisorId });
   }
 
+  await createStaff("Saim Amjad", "saim.amjad", "SOFTWARE_BK", null);
+
   await createStaff("Abdul Rahman", "abdul.rahman", "BK", ahmadMaqbool.id);
   await createStaff("Hamza Sarfraz", "hamza.sarfraz", "BK", ahmadMaqbool.id);
   await createStaff("Muhammad Ammar", "muhammad.ammar", "BK", ahmadMaqbool.id);
@@ -265,12 +266,6 @@ async function main() {
   await createStaff("Rohan Abbas", "rohan.abbas", "VAT", hashir.id);
   await createStaff("Zulqarnain Qasim", "zulqarnain.qasim", "VAT", hashir.id);
 
-  const softwareDepartmentId = departmentIdByCode.get("SOFTWARE_BK");
-  await prisma.user.updateMany({
-    where: { departmentId: softwareDepartmentId, role: UserRole.STAFF },
-    data: { role: UserRole.SUPERVISOR, supervisorId: irfan.id },
-  });
-
   const invalidRoleAssignments = await prisma.jobAssignment.updateMany({
     where: {
       active: true,
@@ -283,33 +278,6 @@ async function main() {
     data: { active: false },
   });
 
-  const activeStaffAssignments = await prisma.jobAssignment.findMany({
-    where: { active: true, assignmentRole: AssignmentRole.STAFF },
-    select: {
-      id: true,
-      user: { select: { supervisorId: true } },
-      job: {
-        select: {
-          assignments: {
-            where: { active: true, assignmentRole: AssignmentRole.SUPERVISOR },
-            select: { userId: true },
-          },
-        },
-      },
-    },
-  });
-  const invalidTeamAssignmentIds = activeStaffAssignments
-    .filter((assignment) => !assignment.user.supervisorId || !assignment.job.assignments.some(
-      (supervisorAssignment) => supervisorAssignment.userId === assignment.user.supervisorId,
-    ))
-    .map((assignment) => assignment.id);
-  if (invalidTeamAssignmentIds.length) {
-    await prisma.jobAssignment.updateMany({
-      where: { id: { in: invalidTeamAssignmentIds } },
-      data: { active: false },
-    });
-  }
-
   const bootstrapUsername = process.env.ADMIN_EMAIL?.trim().toLowerCase();
   if (bootstrapUsername && !REQUESTED_ADMIN_USERNAMES.includes(bootstrapUsername)) {
     await prisma.user.updateMany({
@@ -320,7 +288,7 @@ async function main() {
 
   await syncAdminExceptionNotifications();
 
-  console.log(`Hierarchy seed completed. Removed ${invalidRoleAssignments.count} role-mismatched and ${invalidTeamAssignmentIds.length} cross-team assignments.`);
+  console.log(`Hierarchy seed completed. Removed ${invalidRoleAssignments.count} role-mismatched assignments.`);
 }
 
 main()

@@ -188,12 +188,9 @@ export async function JobListPage({
       : user.role === "SUPERVISOR" && currentUserOption
         ? [currentUserOption]
         : [];
-  const eligibleSupervisorIds = new Set(supervisorUsers.map((candidate) => candidate.id));
   const staffUsers = users
     .filter((candidate) =>
       candidate.role === "STAFF" &&
-      Boolean(candidate.supervisorId) &&
-      eligibleSupervisorIds.has(candidate.supervisorId!) &&
       (hasGlobalAssignmentScope ||
         (user.role === "MANAGER" && isSameDepartment(candidate)) ||
         (user.role === "SUPERVISOR" && candidate.supervisorId === user.id)),

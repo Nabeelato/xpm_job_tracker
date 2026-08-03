@@ -51,6 +51,19 @@ test("non-QC available queues remain department and role scoped", () => {
   assert.match(serialized, /SUPERVISOR/);
 });
 
+test("staff queue and interaction do not require a configured supervisor", () => {
+  const staff = user({ role: "STAFF", supervisorId: null });
+  const serialized = JSON.stringify(availableJobsWhere(staff));
+
+  assert.doesNotMatch(serialized, /__no_supervisor__|supervisor-1/);
+  assert.equal(canInteractWithJob(staff, {
+    assignments: [],
+    finalDepartmentId: staff.departmentId ?? undefined,
+    jobStateNumber: 4,
+    archived: false,
+  }), true);
+});
+
 test("Faizan sees only jobs attributed to him by XPM", () => {
   const faizan = user({
     id: "faizan-id",

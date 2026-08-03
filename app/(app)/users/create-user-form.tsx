@@ -61,8 +61,8 @@ export function CreateUserForm({
           </option>
         ))}
       </Select>
-      <Select key={`${role}:${departmentId}`} name="supervisorId" required={role === "STAFF"} defaultValue="">
-        <option value="">{role === "STAFF" ? "Select team supervisor" : "No hierarchy parent"}</option>
+      <Select key={`${role}:${departmentId}`} name="supervisorId" defaultValue="">
+        <option value="">{role === "STAFF" ? "No supervisor" : "No hierarchy parent"}</option>
         {eligibleParents.map((parent) => (
           <option key={parent.id} value={parent.id}>
             {parent.name} ({parent.role})

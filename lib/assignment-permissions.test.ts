@@ -112,12 +112,12 @@ test("QC managers can directly assign eligible staff on any visible job", () => 
   }), true);
 });
 
-test("staff without a configured supervisor cannot be assigned", () => {
+test("staff without a configured supervisor can be assigned", () => {
   assert.equal(canManageJobAssignmentRole({
     actor: admin,
     assignee: { ...staff, supervisorId: null },
     assignmentRole: "STAFF",
     activeAssignments: [],
     operation: "ASSIGN",
-  }), false);
+  }), true);
 });
