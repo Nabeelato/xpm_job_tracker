@@ -86,7 +86,7 @@ export function UserRow({
   const eligibleTargets = transferTargets.filter((t) => t.id !== user.id);
   const eligibleParents = hierarchyParents.filter((parent) => {
     if (parent.id === user.id || !draft.departmentId || parent.departmentId !== draft.departmentId) return false;
-    if (draft.role === "STAFF") return parent.role === "SUPERVISOR";
+    if (draft.role === "STAFF") return parent.role === "ADMIN" || parent.role === "MANAGER" || parent.role === "SUPERVISOR";
     if (draft.role === "SUPERVISOR") return parent.role === "ADMIN" || parent.role === "MANAGER";
     if (draft.role === "MANAGER") return parent.role === "ADMIN";
     return false;
