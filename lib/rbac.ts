@@ -126,19 +126,6 @@ export function availableJobsWhere(user: AppSessionUser): Prisma.JobWhereInput {
     rules.push({ finalDepartmentId: user.departmentId });
   }
 
-  if (user.role === "STAFF") {
-    if (!user.supervisorId) return { id: "__no_supervisor__" };
-    rules.push({
-      assignments: {
-        some: {
-          active: true,
-          assignmentRole: AssignmentRole.SUPERVISOR,
-          userId: user.supervisorId,
-        },
-      },
-    });
-  }
-
   return { AND: rules };
 }
 
@@ -189,13 +176,8 @@ export function canInteractWithJob(user: AppSessionUser, job: InteractiveJob) {
   const softwareSupervisorAssigned = user.departmentCode === "SOFTWARE_BK" && job.assignments.some(
     (assignment) => assignment.assignmentRole === AssignmentRole.SUPERVISOR,
   );
-  const staffSupervisorAssigned = user.role !== "STAFF" || Boolean(
-    user.supervisorId && job.assignments.some(
-      (assignment) => assignment.assignmentRole === AssignmentRole.SUPERVISOR && assignment.userId === user.supervisorId,
-    ),
-  );
   return Boolean(
-    departmentMatches && !softwareSupervisorAssigned && staffSupervisorAssigned &&
+    departmentMatches && !softwareSupervisorAssigned &&
     !job.archived && isWorkflowJobState(job.jobStateNumber, job.xpmState) &&
     !job.assignments.some((assignment) => assignment.assignmentRole === assignmentRoleForUser(user.role))
   );

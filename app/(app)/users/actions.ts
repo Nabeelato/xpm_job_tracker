@@ -23,12 +23,8 @@ async function hierarchyParentError({
   if (departmentId) {
     const department = await prisma.department.findUnique({ where: { id: departmentId }, select: { code: true } });
     if (!department) return "The selected department does not exist.";
-    if (department.code === "SOFTWARE_BK" && role === UserRole.STAFF) {
-      return "Software BK users must be supervisors, not staff.";
-    }
   }
   if (role === UserRole.ADMIN) return supervisorId ? "Administrators cannot report to another user." : null;
-  if (role === UserRole.STAFF && !supervisorId) return "Staff must have a supervisor.";
   if (!supervisorId) return null;
 
   const parent = await prisma.user.findUnique({

@@ -71,20 +71,6 @@ export function AssignSingleJobModal({
           { id: `pending-${key}`, assignedAt: new Date(), assignmentRole: role, user: target },
         ]
       : assignments.filter((assignment) => !(assignment.assignmentRole === role && assignment.user.id === target.id));
-    if (checked && role === "STAFF" && target.supervisorId) {
-      const supervisor = supervisorUsers.find((candidate) => candidate.id === target.supervisorId);
-      if (supervisor) {
-        nextAssignments = [
-          ...nextAssignments.filter((assignment) => assignment.assignmentRole !== "SUPERVISOR"),
-          {
-            id: `pending-SUPERVISOR:${supervisor.id}`,
-            assignedAt: new Date(),
-            assignmentRole: "SUPERVISOR",
-            user: supervisor,
-          },
-        ];
-      }
-    }
     setAssignments(nextAssignments);
     onAssignmentsChange?.(nextAssignments);
 
@@ -167,9 +153,7 @@ export function AssignSingleJobModal({
           <RoleChecklist role="SUPERVISOR" users={supervisorUsers} />
           <RoleChecklist role="STAFF" users={staffUsers} />
           <p className="text-xs text-muted-foreground">A job can have multiple managers, but only one supervisor and one staff member.</p>
-          {currentUserRole !== "SUPERVISOR" ? (
-            <p className="text-xs text-muted-foreground">Selecting staff automatically assigns their configured supervisor.</p>
-          ) : null}
+          <p className="text-xs text-muted-foreground">Staff and supervisor assignments are managed independently.</p>
         </div>
 
         <div className="flex justify-end">
