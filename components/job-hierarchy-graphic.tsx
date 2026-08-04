@@ -109,6 +109,12 @@ export function JobHierarchyGraphic({ people }: { people: HierarchyPerson[] }) {
   const orphanSupervisors = people.filter(
     (person) => person.role === "SUPERVISOR" && (!person.supervisorId || !byId.has(person.supervisorId)),
   );
+  const ungroupedStaff = people.filter((person) => {
+    if (person.role !== "STAFF") return false;
+    if (!person.supervisorId) return true;
+    const parentRole = byId.get(person.supervisorId)?.role;
+    return parentRole !== "ADMIN" && parentRole !== "MANAGER" && parentRole !== "SUPERVISOR";
+  });
 
   if (!people.length) {
     return <Card><CardContent className="p-6 text-sm text-muted-foreground">No hierarchy users are visible.</CardContent></Card>;
@@ -118,6 +124,7 @@ export function JobHierarchyGraphic({ people }: { people: HierarchyPerson[] }) {
     <div className="space-y-5">
       {leaders.map((leader) => {
         const supervisors = (childrenOf.get(leader.id) ?? []).filter((person) => person.role === "SUPERVISOR");
+        const directStaff = (childrenOf.get(leader.id) ?? []).filter((person) => person.role === "STAFF");
         return (
           <Card className="overflow-hidden" key={leader.id}>
             <CardHeader className="border-b bg-sky-50/70">
@@ -142,6 +149,12 @@ export function JobHierarchyGraphic({ people }: { people: HierarchyPerson[] }) {
                   staff={(childrenOf.get(supervisor.id) ?? []).filter((person) => person.role === "STAFF")}
                 />
               )) : <p className="text-sm text-muted-foreground">No supervisors currently mapped to this leader.</p>}
+              {directStaff.length ? (
+                <div className="space-y-3 rounded-lg border border-emerald-100 bg-emerald-50/30 p-3">
+                  <div className="text-sm font-medium text-emerald-950">Direct staff</div>
+                  {directStaff.map((staff) => <StaffNode key={staff.id} person={staff} />)}
+                </div>
+              ) : null}
             </CardContent>
           </Card>
         );
@@ -158,6 +171,15 @@ export function JobHierarchyGraphic({ people }: { people: HierarchyPerson[] }) {
                 staff={(childrenOf.get(supervisor.id) ?? []).filter((person) => person.role === "STAFF")}
               />
             ))}
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {ungroupedStaff.length ? (
+        <Card>
+          <CardHeader><CardTitle className="text-base">Staff without a visible supervisor</CardTitle></CardHeader>
+          <CardContent className="space-y-3">
+            {ungroupedStaff.map((staff) => <StaffNode key={staff.id} person={staff} />)}
           </CardContent>
         </Card>
       ) : null}

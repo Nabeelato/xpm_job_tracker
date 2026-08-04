@@ -26,7 +26,7 @@ export function CreateUserForm({
   const [departmentId, setDepartmentId] = useState("");
   const eligibleParents = hierarchyParents.filter((parent) => {
     if (!departmentId || parent.departmentId !== departmentId) return false;
-    if (role === "STAFF") return parent.role === "SUPERVISOR";
+    if (role === "STAFF") return parent.role === "ADMIN" || parent.role === "MANAGER" || parent.role === "SUPERVISOR";
     if (role === "SUPERVISOR") return parent.role === "ADMIN" || parent.role === "MANAGER";
     if (role === "MANAGER") return parent.role === "ADMIN";
     return false;
@@ -62,7 +62,7 @@ export function CreateUserForm({
         ))}
       </Select>
       <Select key={`${role}:${departmentId}`} name="supervisorId" defaultValue="">
-        <option value="">{role === "STAFF" ? "No supervisor" : "No hierarchy parent"}</option>
+        <option value="">No hierarchy parent</option>
         {eligibleParents.map((parent) => (
           <option key={parent.id} value={parent.id}>
             {parent.name} ({parent.role})

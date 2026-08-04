@@ -247,7 +247,7 @@ async function main() {
     return upsertUser({ name, username, role: UserRole.STAFF, departmentCode, supervisorId });
   }
 
-  await createStaff("Saim Amjad", "saim.amjad", "SOFTWARE_BK", null);
+  await createStaff("Saim Amjad", "saim.amjad", "SOFTWARE_BK", irfan.id);
 
   await createStaff("Abdul Rahman", "abdul.rahman", "BK", ahmadMaqbool.id);
   await createStaff("Hamza Sarfraz", "hamza.sarfraz", "BK", ahmadMaqbool.id);

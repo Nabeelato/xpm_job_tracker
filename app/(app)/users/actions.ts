@@ -35,8 +35,13 @@ async function hierarchyParentError({
   if (!departmentId || parent.departmentId !== departmentId) {
     return "The selected hierarchy parent must be in the same department.";
   }
-  if (role === UserRole.STAFF && parent.role !== UserRole.SUPERVISOR) {
-    return "Staff can report only to a supervisor.";
+  if (
+    role === UserRole.STAFF &&
+    parent.role !== UserRole.ADMIN &&
+    parent.role !== UserRole.MANAGER &&
+    parent.role !== UserRole.SUPERVISOR
+  ) {
+    return "Staff can report only to an administrator, manager, or supervisor.";
   }
   if (role === UserRole.SUPERVISOR && parent.role !== UserRole.ADMIN && parent.role !== UserRole.MANAGER) {
     return "Supervisors can report only to an administrator or manager.";

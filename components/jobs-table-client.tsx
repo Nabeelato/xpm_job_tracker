@@ -43,6 +43,7 @@ export type JobRow = {
   stateIdleAccumulatedMs: number;
   stateIdleActiveEnteredAt: Date | null;
   assignments: Assignment[];
+  canInteract: boolean;
 };
 
 export function JobsTableClient({
@@ -407,7 +408,7 @@ export function JobsTableClient({
                         {claimingJobId === job.id ? "Claiming…" : "Claim job"}
                       </Button>
                     </TableCell>
-                  ) : (isAdmin || isSupervisor || currentUserRole === "MANAGER") ? (
+                  ) : (isAdmin || (job.canInteract && (isSupervisor || currentUserRole === "MANAGER"))) ? (
                     <TableCell>
                       <Button
                         onClick={() => setAssigningJobId(job.id)}
