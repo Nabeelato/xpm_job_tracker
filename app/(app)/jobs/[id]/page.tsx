@@ -15,7 +15,7 @@ import { canManageJobAssignmentRole } from "@/lib/assignment-permissions";
 import { prisma } from "@/lib/db";
 import { detectDepartmentMismatch } from "@/lib/import/department";
 import { summarizeJobStateTime } from "@/lib/job-state";
-import { assertCanViewJob, canArchiveJobs, canAssignJobs, canInteractWithJob, requireUser } from "@/lib/rbac";
+import { canArchiveJobs, canAssignJobs, canInteractWithJob, requireUser } from "@/lib/rbac";
 import { formatDateTime, formatElapsedTime, titleCaseEnum } from "@/lib/utils";
 import { updateClientBookkeepingAction } from "@/app/(app)/clients/actions";
 import {
@@ -99,7 +99,6 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
     xpmState: job.xpmState,
     archived: job.archived,
   };
-  assertCanViewJob(user, accessJob);
   const canInteract = canInteractWithJob(user, accessJob);
   const departmentWarningCode = detectDepartmentMismatch(job.jobName, job.finalDepartment.code, job.sourceManagerName);
 

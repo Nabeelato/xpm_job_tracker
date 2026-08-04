@@ -18,7 +18,7 @@ import {
 import { summarizeJobStateTime, type JobStateGroup } from "@/lib/job-state";
 import { buildJobReportOrderBy, buildJobReportWhere } from "@/lib/reports";
 import { getSystemSetting } from "@/lib/settings";
-import { requireUser } from "@/lib/rbac";
+import { canInteractWithJob, requireUser } from "@/lib/rbac";
 import { cn, parsePageSize, searchParam, toInt, toSearchParams, withPageSizeParam } from "@/lib/utils";
 
 type Preset = {
@@ -96,9 +96,7 @@ export async function JobListPage({
   const filterParams = paramsWithPreset(pageParams, effectivePreset);
   const sortBy = searchParam(rawParams, "sortBy");
   const sortDir = (searchParam(rawParams, "sortDir") ?? "asc") as "asc" | "desc";
-  const dataScope = effectivePreset.allJobs && (user.role === "ADMIN" || user.departmentCode === "QC")
-    ? "all"
-    : "visible";
+  const dataScope = effectivePreset.allJobs || effectivePreset.myJobs ? "all" : "visible";
   const where = buildJobReportWhere(filterParams, user, { scope: dataScope });
 
   const [showAssignmentAge, showStateAge] = await Promise.all([
@@ -114,11 +112,13 @@ export async function JobListPage({
         jobIdFromExcel: true,
         clientId: true,
         jobName: true,
+        finalDepartmentId: true,
         xpmState: true,
         jobStateNumber: true,
         sourceManagerName: true,
         stateEnteredAt: true,
         missingFromLatestImport: true,
+        archived: true,
         stateTimeRecords: {
           where: { stateNumber: { gte: 1, lte: 6 } },
           select: { stateNumber: true, enteredAt: true, exitedAt: true },
@@ -327,6 +327,17 @@ export async function JobListPage({
               stateIdleAccumulatedMs: stateTime.accumulatedMs,
               stateIdleActiveEnteredAt: stateTime.activeEnteredAt,
               assignments: j.assignments,
+              canInteract: canInteractWithJob(user, {
+                assignments: j.assignments.map((assignment) => ({
+                  userId: assignment.user.id,
+                  assignmentRole: assignment.assignmentRole,
+                })),
+                finalDepartmentId: j.finalDepartmentId,
+                sourceManagerName: j.sourceManagerName,
+                jobStateNumber: j.jobStateNumber,
+                xpmState: j.xpmState,
+                archived: j.archived,
+              }),
             };
           })}
           managerUsers={managerUsers}

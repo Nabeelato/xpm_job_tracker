@@ -67,8 +67,7 @@ export async function GET(req: NextRequest) {
 
   const params = req.nextUrl.searchParams;
   const requestedScope = params.get("scope");
-  const canExportAll = user.role === "ADMIN" || user.departmentCode === "QC";
-  const scope: JobReportScope = requestedScope === "all" && canExportAll
+  const scope: JobReportScope = requestedScope === "all"
     ? "all"
     : requestedScope === "visible"
       ? "visible"
