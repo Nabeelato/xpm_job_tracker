@@ -3,10 +3,14 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toggleJobAssignmentAction } from "@/app/(app)/jobs/actions";
+import { useClientCategoryConfirm } from "@/components/client-category-confirm-dialog";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { isIrfanSourcePerson, isTaahaSourcePerson } from "@/lib/import/department";
 
 type AssignmentRole = "MANAGER" | "SUPERVISOR" | "STAFF";
 type UserRole = "ADMIN" | "MANAGER" | "SUPERVISOR" | "STAFF";
+type ClientCategory = "SOFTWARE" | "MANUAL";
 type RoleUser = { id: string; name: string | null; supervisorId?: string | null; disabled?: boolean };
 type Assignment = {
   id: string;
@@ -26,6 +30,7 @@ export function AssignSingleJobModal({
   open,
   onClose,
   onAssignmentsChange,
+  onClientCategoryChange,
   job,
   currentUserRole,
   managerUsers,
@@ -36,10 +41,13 @@ export function AssignSingleJobModal({
   open: boolean;
   onClose: () => void;
   onAssignmentsChange?: (assignments: Assignment[]) => void;
+  onClientCategoryChange?: (category: ClientCategory) => void;
   job: {
     id: string;
     jobIdFromExcel: string;
+    clientId: string;
     clientName: string;
+    clientCategory: ClientCategory | null;
     departmentCode: string;
     assignments: Assignment[];
   };
@@ -53,8 +61,11 @@ export function AssignSingleJobModal({
   const router = useRouter();
   const [assignments, setAssignments] = useState(job.assignments);
   const [savingKey, setSavingKey] = useState<string | null>(null);
+  const [clientCategory, setClientCategory] = useState(job.clientCategory);
+  const { confirm: confirmClientCategory, dialog: clientCategoryDialog } = useClientCategoryConfirm();
 
   useEffect(() => setAssignments(job.assignments), [job.id, job.assignments]);
+  useEffect(() => setClientCategory(job.clientCategory), [job.id, job.clientCategory]);
   useEffect(() => {
     const dialog = dialogRef.current;
     if (!dialog) return;
@@ -64,6 +75,14 @@ export function AssignSingleJobModal({
 
   async function toggle(role: AssignmentRole, target: RoleUser, checked: boolean) {
     const key = `${role}:${target.id}`;
+
+    let confirmedCategory: ClientCategory | null = null;
+    if (role === "MANAGER" && checked && (isIrfanSourcePerson(target.name) || isTaahaSourcePerson(target.name))) {
+      const choice = await confirmClientCategory(target.name ?? "This manager", job.clientName);
+      if (!choice) return;
+      confirmedCategory = choice;
+    }
+
     setSavingKey(key);
     let nextAssignments = checked
       ? [
@@ -73,12 +92,17 @@ export function AssignSingleJobModal({
       : assignments.filter((assignment) => !(assignment.assignmentRole === role && assignment.user.id === target.id));
     setAssignments(nextAssignments);
     onAssignmentsChange?.(nextAssignments);
+    if (confirmedCategory) {
+      setClientCategory(confirmedCategory);
+      onClientCategoryChange?.(confirmedCategory);
+    }
 
     const formData = new FormData();
     formData.set("jobId", job.id);
     formData.set("userId", target.id);
     formData.set("assignmentRole", role);
     formData.set("assigned", String(checked));
+    if (confirmedCategory) formData.set("clientCategory", confirmedCategory);
     await toggleJobAssignmentAction(formData);
     setSavingKey(null);
     router.refresh();
@@ -136,16 +160,21 @@ export function AssignSingleJobModal({
   }
 
   return (
-    <dialog
-      className="w-full max-w-lg rounded-xl border bg-background p-0 shadow-xl backdrop:bg-black/40"
-      onClick={(event) => { if (event.target === dialogRef.current) onClose(); }}
-      ref={dialogRef}
-    >
+    <>
+      {clientCategoryDialog}
+      <dialog
+        className="w-full max-w-lg rounded-xl border bg-background p-0 shadow-xl backdrop:bg-black/40"
+        onClick={(event) => { if (event.target === dialogRef.current) onClose(); }}
+        ref={dialogRef}
+      >
       <div className="space-y-5 p-6">
         <div>
           <h2 className="text-lg font-semibold">Assign Users</h2>
           <p className="mt-1 text-sm text-muted-foreground">{job.jobIdFromExcel} — {job.clientName}</p>
-          <span className="mt-1 inline-block rounded-full bg-muted px-2 py-0.5 text-xs font-medium">{job.departmentCode}</span>
+          <div className="mt-1 flex flex-wrap items-center gap-1.5">
+            <span className="inline-block rounded-full bg-muted px-2 py-0.5 text-xs font-medium">{job.departmentCode}</span>
+            {clientCategory === "SOFTWARE" ? <Badge variant="softwareBk">Software Client</Badge> : null}
+          </div>
         </div>
 
         <div className="space-y-3">
@@ -160,6 +189,7 @@ export function AssignSingleJobModal({
           <Button onClick={onClose} type="button" variant="outline">Close</Button>
         </div>
       </div>
-    </dialog>
+      </dialog>
+    </>
   );
 }

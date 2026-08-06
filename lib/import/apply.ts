@@ -10,6 +10,7 @@ import {
 } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { syncBkDepartmentConflictNotifications } from "@/lib/bk-department-conflicts";
+import { applyClientCategoryForDepartment } from "@/lib/client-category-sync";
 import {
   detectDepartmentFromManager,
   detectImportDepartment,
@@ -63,6 +64,10 @@ function addLog(
 
 function departmentMap(departments: Department[]) {
   return new Map(departments.map((department) => [department.code, department]));
+}
+
+function departmentCodeById(departments: Department[]) {
+  return new Map(departments.map((department) => [department.id, department.code]));
 }
 
 function unclassifiedWarningKey(recipientId: string, jobId: string) {
@@ -131,7 +136,9 @@ export async function applyImportBatch(
         throw new Error("This XPM file is not newer than the previously applied import.");
       }
 
-      const departments = departmentMap(await tx.department.findMany());
+      const departmentRows = await tx.department.findMany();
+      const departments = departmentMap(departmentRows);
+      const departmentCodesById = departmentCodeById(departmentRows);
       const adminIds = (
         await tx.user.findMany({
           where: { active: true, role: "ADMIN" },
@@ -244,6 +251,7 @@ export async function applyImportBatch(
           }
           jobByExcelId.set(row.detectedJobId, { ...created, client });
           addLog(logs, created.id, importBatchId, changedById, "job_created", null, row.detectedJobId);
+          await applyClientCategoryForDepartment(tx, client.id, autoDepartment.code);
           if (autoDepartment.code === "UNCLASSIFIED") {
             await warnAdminsAboutUnclassifiedJob(
               tx,
@@ -336,6 +344,10 @@ export async function applyImportBatch(
           });
         }
         jobByExcelId.set(row.detectedJobId, { ...updated, client });
+        const finalDepartmentCode = departmentCodesById.get(finalDepartmentId);
+        if (finalDepartmentCode) {
+          await applyClientCategoryForDepartment(tx, client.id, finalDepartmentCode);
+        }
         if (autoDepartment.code === "UNCLASSIFIED" && finalDepartmentId === autoDepartment.id) {
           await warnAdminsAboutUnclassifiedJob(
             tx,

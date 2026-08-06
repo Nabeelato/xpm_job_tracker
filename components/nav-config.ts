@@ -70,6 +70,7 @@ export const navSections: NavSection[] = [
     items: [
       { href: "/users", label: "Users", icon: Users },
       { href: "/reports/exceptions", label: "Exception Reports", icon: TriangleAlert },
+      { href: "/reports/bk-conflicts", label: "BK/Software Conflicts", icon: TriangleAlert },
       { href: "/reports", label: "Reports", icon: BarChart3 },
     ],
   },

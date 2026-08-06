@@ -139,6 +139,16 @@ export default async function ReportsPage() {
         </CardContent>
       </Card>
 
+      <Card className="mb-5 border-orange-200 bg-orange-50/50">
+        <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4">
+          <div>
+            <div className="font-semibold">BK / Software Conflicts</div>
+            <div className="text-sm text-muted-foreground">Clients whose active jobs disagree between BK and Software BK, or between Taaha and Irfan as source partners.</div>
+          </div>
+          <Link className={buttonVariants()} href="/reports/bk-conflicts">Open conflict report</Link>
+        </CardContent>
+      </Card>
+
       <div className="mb-5 grid gap-4 xl:grid-cols-2">
         <ReportCard
           action="/api/reports/jobs/export"
