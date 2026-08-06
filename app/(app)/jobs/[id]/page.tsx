@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Archive, TriangleAlert, UserPlus } from "lucide-react";
+import { AssignManagerInlineForm } from "@/components/assign-manager-inline-form";
 import { DepartmentBadge } from "@/components/department-badge";
 import { JobStateIdleTime } from "@/components/job-idle-time";
 import { PageHeader } from "@/components/page-header";
@@ -48,7 +49,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
       archived: true,
       missingFromLatestImport: true,
       lastSeenAt: true,
-      client: { select: { displayName: true, bookkeepingSoftware: true, bookkeepingBy: true } },
+      client: { select: { displayName: true, category: true, bookkeepingSoftware: true, bookkeepingBy: true } },
       finalDepartment: { select: { code: true } },
       autoDetectedDepartment: { select: { code: true } },
       assignments: {
@@ -152,10 +153,11 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
               <dl className="grid gap-4 text-sm md:grid-cols-2">
                 <div>
                   <dt className="text-muted-foreground">Client</dt>
-                  <dd className="font-medium">
+                  <dd className="flex flex-wrap items-center gap-1.5 font-medium">
                     <Link className="text-primary hover:underline" href={`/clients/${job.clientId}`}>
                       {job.client.displayName}
                     </Link>
+                    {job.client.category === "SOFTWARE" ? <Badge variant="softwareBk">Software Client</Badge> : null}
                   </dd>
                 </div>
                 <div>
@@ -342,6 +344,16 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
                       activeAssignments: activeAssignmentRefs,
                       operation: "ASSIGN",
                     }));
+                    if (assignmentRole === "MANAGER") {
+                      return (
+                        <AssignManagerInlineForm
+                          candidates={candidates}
+                          clientName={job.client.displayName}
+                          jobId={job.id}
+                          key={assignmentRole}
+                        />
+                      );
+                    }
                     return (
                       <form action={assignJobAction} className="grid gap-2 sm:grid-cols-[1fr_auto]" key={assignmentRole}>
                         <input name="jobId" type="hidden" value={job.id} />

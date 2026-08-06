@@ -219,15 +219,20 @@ export function JobsTableClient({
             job={{
               id: assigningJob.id,
               jobIdFromExcel: assigningJob.jobIdFromExcel,
+              clientId: assigningJob.clientId,
               clientName: assigningJob.clientName,
+              clientCategory: assigningJob.clientCategory,
               departmentCode: assigningJob.departmentCode,
               assignments: assigningJob.assignments,
             }}
             managerUsers={managerUsers}
-            onClose={() => setAssigningJobId(null)}
             onAssignmentsChange={(assignments) => setDisplayedJobs((current) => current.map((job) =>
               job.id === assigningJob.id ? { ...job, assignments } : job,
             ))}
+            onClientCategoryChange={(clientCategory) => setDisplayedJobs((current) => current.map((job) =>
+              job.clientId === assigningJob.clientId ? { ...job, clientCategory } : job,
+            ))}
+            onClose={() => setAssigningJobId(null)}
             open={true}
             staffUsers={staffUsers}
             supervisorUsers={supervisorUsers}

@@ -3,8 +3,10 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { bulkAssignJobRolesAction } from "@/app/(app)/jobs/actions";
+import { useClientCategoryConfirm } from "@/components/client-category-confirm-dialog";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
+import { isIrfanSourcePerson, isTaahaSourcePerson } from "@/lib/import/department";
 
 type RoleUser = { id: string; name: string | null };
 type SelectedJob = { id: string; departmentCode: string };
@@ -19,6 +21,7 @@ export function AssignJobsModal({ open, onClose, selectedJobs, managerUsers, sup
   const [isPending, startTransition] = useTransition();
   const [operation, setOperation] = useState<"ASSIGN" | "UNASSIGN">("ASSIGN");
   const [role, setRole] = useState<Role>("MANAGER");
+  const { confirm: confirmClientCategory, dialog: clientCategoryDialog } = useClientCategoryConfirm();
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -33,7 +36,7 @@ export function AssignJobsModal({ open, onClose, selectedJobs, managerUsers, sup
     .map(([code, count]) => `${code}: ${count}`).join(" | ");
   const users = role === "MANAGER" ? managerUsers : role === "SUPERVISOR" ? supervisorUsers : staffUsers;
 
-  function submit(event: React.FormEvent<HTMLFormElement>) {
+  async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const formData = new FormData(event.currentTarget);
     const message = operation === "UNASSIGN"
@@ -41,7 +44,21 @@ export function AssignJobsModal({ open, onClose, selectedJobs, managerUsers, sup
       : role === "MANAGER"
         ? `Add this manager to ${selectedJobs.length} selected jobs? Existing managers will remain.`
         : `Assign this ${role.toLowerCase()} to jobs where that role is currently empty?`;
-    if (!confirm(message)) return;
+
+    if (operation === "ASSIGN" && role === "MANAGER") {
+      const targetUserId = String(formData.get("userId") ?? "");
+      const target = managerUsers.find((candidate) => candidate.id === targetUserId);
+      if (target && (isIrfanSourcePerson(target.name) || isTaahaSourcePerson(target.name))) {
+        const choice = await confirmClientCategory(target.name ?? "This manager", `${selectedJobs.length} selected jobs' clients`);
+        if (!choice) return;
+        formData.set("clientCategory", choice);
+      } else if (!confirm(message)) {
+        return;
+      }
+    } else if (!confirm(message)) {
+      return;
+    }
+
     startTransition(async () => {
       await bulkAssignJobRolesAction(formData);
       onClose();
@@ -50,7 +67,9 @@ export function AssignJobsModal({ open, onClose, selectedJobs, managerUsers, sup
   }
 
   return (
-    <dialog className="w-full max-w-md rounded-xl border bg-background p-0 shadow-xl backdrop:bg-black/40"
+    <>
+      {clientCategoryDialog}
+      <dialog className="w-full max-w-md rounded-xl border bg-background p-0 shadow-xl backdrop:bg-black/40"
       onClick={(event) => { if (event.target === dialogRef.current) onClose(); }} ref={dialogRef}>
       <div className="space-y-5 p-6">
         <div>
@@ -96,6 +115,7 @@ export function AssignJobsModal({ open, onClose, selectedJobs, managerUsers, sup
           </div>
         </form>
       </div>
-    </dialog>
+      </dialog>
+    </>
   );
 }

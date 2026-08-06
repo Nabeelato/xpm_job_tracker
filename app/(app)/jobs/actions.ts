@@ -7,6 +7,7 @@ import {
   AssignmentRole,
   AssignmentSource,
   ChangeSource,
+  ClientCategory,
   InternalStatus,
   NotificationType,
   type Prisma,
@@ -17,6 +18,8 @@ import {
   canManageJobAssignmentRole,
 } from "@/lib/assignment-permissions";
 import { syncBkDepartmentConflictNotifications } from "@/lib/bk-department-conflicts";
+import { applyClientCategory, applyClientCategoryForDepartment } from "@/lib/client-category-sync";
+import { isIrfanSourcePerson, isTaahaSourcePerson } from "@/lib/import/department";
 import { syncMissingAssignmentExceptionNotifications } from "@/lib/job-exceptions";
 import { createNotification } from "@/lib/notifications";
 import {
@@ -43,6 +46,20 @@ function jobNotificationLabel(job: { jobName: string; client: { displayName: str
 
 function isExclusiveAssignmentRole(role: AssignmentRole) {
   return role === AssignmentRole.STAFF || role === AssignmentRole.SUPERVISOR;
+}
+
+// The client-type confirmation dialog only applies to Manager assignments for the two people whose
+// names drive BK vs Software BK department detection (see lib/import/department.ts). Re-validated
+// server-side so a crafted request can't set an arbitrary client's category via this path.
+function resolveConfirmedClientCategory(
+  formData: FormData,
+  assignmentRole: AssignmentRole,
+  assigneeName: string | null | undefined,
+): ClientCategory | null {
+  if (assignmentRole !== AssignmentRole.MANAGER) return null;
+  if (!assigneeName || (!isIrfanSourcePerson(assigneeName) && !isTaahaSourcePerson(assigneeName))) return null;
+  const raw = String(formData.get("clientCategory") ?? "");
+  return Object.values(ClientCategory).includes(raw as ClientCategory) ? (raw as ClientCategory) : null;
 }
 
 async function getVisibleJobOrRedirect(jobId: string) {
@@ -102,8 +119,11 @@ export async function updateDepartmentAction(formData: FormData) {
   const departmentId = String(formData.get("departmentId") ?? "");
   if (!jobId || !departmentId) return;
 
-  const job = await prisma.job.findFirst({ where: { id: jobId, AND: [visibleJobsWhere(user)] } });
-  if (!job || job.finalDepartmentId === departmentId) return;
+  const [job, department] = await Promise.all([
+    prisma.job.findFirst({ where: { id: jobId, AND: [visibleJobsWhere(user)] } }),
+    prisma.department.findUnique({ where: { id: departmentId } }),
+  ]);
+  if (!job || !department || job.finalDepartmentId === departmentId) return;
 
   await prisma.job.update({
     where: { id: job.id },
@@ -119,7 +139,11 @@ export async function updateDepartmentAction(formData: FormData) {
     oldValue: job.finalDepartmentId,
     newValue: departmentId,
   });
-  await prisma.$transaction((tx) => syncBkDepartmentConflictNotifications(tx));
+  await prisma.$transaction(async (tx) => {
+    await applyClientCategoryForDepartment(tx, job.clientId, department.code);
+    await syncBkDepartmentConflictNotifications(tx);
+  });
+
   revalidatePath(`/jobs/${job.id}`);
   revalidatePath(`/clients/${job.clientId}`);
   revalidatePath("/jobs");
@@ -226,7 +250,12 @@ export async function assignJobAction(formData: FormData) {
     operation: "ASSIGN",
   })) redirect(user.role === "MANAGER" ? "/jobs/my" : "/dashboard");
 
+  const confirmedClientCategory = resolveConfirmedClientCategory(formData, assignmentRole, assignee.name);
+
   await prisma.$transaction(async (tx) => {
+    if (confirmedClientCategory) {
+      await applyClientCategory(tx, job.clientId, confirmedClientCategory);
+    }
     const existing = await tx.jobAssignment.findFirst({
       where: { jobId, userId, assignmentRole, active: true },
     });
@@ -472,7 +501,14 @@ export async function toggleJobAssignmentAction(formData: FormData) {
     operation: shouldAssign ? "ASSIGN" : "REMOVE",
   })) redirect("/dashboard");
 
+  const confirmedClientCategory = shouldAssign
+    ? resolveConfirmedClientCategory(formData, assignmentRole, assignee.name)
+    : null;
+
   await prisma.$transaction(async (tx) => {
+    if (confirmedClientCategory) {
+      await applyClientCategory(tx, job.clientId, confirmedClientCategory);
+    }
     if (shouldAssign) {
       await tx.jobAssignment.create({
         data: {
@@ -755,6 +791,11 @@ export async function bulkAssignJobRolesAction(formData: FormData) {
     },
   });
 
+  const confirmedClientCategory = operation === "ASSIGN" && role
+    ? resolveConfirmedClientCategory(formData, role, targetUser?.name)
+    : null;
+  const categorizedClientIds = new Set<string>();
+
   await prisma.$transaction(async (tx) => {
     for (const job of jobs) {
       if (operation === "ASSIGN" && role && targetUser) {
@@ -772,6 +813,10 @@ export async function bulkAssignJobRolesAction(formData: FormData) {
           (assignment) => assignment.assignmentRole === role && assignment.userId !== targetUser.id,
         );
         if (exclusiveRoleOccupied) continue;
+        if (confirmedClientCategory && !categorizedClientIds.has(job.clientId)) {
+          await applyClientCategory(tx, job.clientId, confirmedClientCategory);
+          categorizedClientIds.add(job.clientId);
+        }
         if (!alreadyAssigned) {
           await tx.jobAssignment.create({
             data: {
