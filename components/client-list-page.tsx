@@ -9,7 +9,12 @@ import { Pagination } from "@/components/pagination";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { bookkeepingByLabels, bookkeepingSoftwareLabels, clientCategoryLabels } from "@/lib/constants";
+import {
+  bookkeepingByLabels,
+  bookkeepingFrequencyLabels,
+  bookkeepingSoftwareLabels,
+  clientCategoryLabels,
+} from "@/lib/constants";
 import { getClientSummaries, type ClientFilter } from "@/lib/optimized-queries";
 import { requireUser } from "@/lib/rbac";
 import { cn, parsePageSize, searchParam, toInt, withPageSizeParam } from "@/lib/utils";
@@ -42,12 +47,14 @@ export async function ClientListPage({
   const filter = presetFilter ?? searchParam(rawParams, "filter");
   const bookkeepingSoftware = searchParam(rawParams, "bookkeepingSoftware");
   const bookkeepingBy = searchParam(rawParams, "bookkeepingBy");
+  const bookkeepingFrequency = searchParam(rawParams, "bookkeepingFrequency");
   const { summaries, total } = await getClientSummaries({
     user,
     query,
     filter,
     bookkeepingSoftware,
     bookkeepingBy,
+    bookkeepingFrequency,
     page,
     pageSize,
   });
@@ -105,6 +112,7 @@ export async function ClientListPage({
                       <ClientBookkeepingInline
                         bookkeepingBy={client.bookkeepingBy}
                         bookkeepingSoftware={client.bookkeepingSoftware}
+                        bookkeepingFrequency={client.bookkeepingFrequency}
                         category={client.category}
                         clientId={client.id}
                       />
@@ -117,11 +125,13 @@ export async function ClientListPage({
                     )}
                   </TableCell>
                   <TableCell>
-                    {!isAdmin && (client.bookkeepingSoftware || client.bookkeepingBy) ? (
+                    {!isAdmin && (client.bookkeepingSoftware || client.bookkeepingBy || client.bookkeepingFrequency) ? (
                       <span className="text-xs text-muted-foreground">
                         {client.bookkeepingSoftware ? bookkeepingSoftwareLabels[client.bookkeepingSoftware] : ""}
                         {client.bookkeepingSoftware && client.bookkeepingBy ? " · " : ""}
                         {client.bookkeepingBy ? bookkeepingByLabels[client.bookkeepingBy] : ""}
+                        {(client.bookkeepingSoftware || client.bookkeepingBy) && client.bookkeepingFrequency ? " · " : ""}
+                        {client.bookkeepingFrequency ? bookkeepingFrequencyLabels[client.bookkeepingFrequency] : ""}
                       </span>
                     ) : !isAdmin ? (
                       <span className="text-xs text-muted-foreground">—</span>

@@ -91,6 +91,11 @@ enum BookkeepingBy {
   CLIENT
 }
 
+enum BookkeepingFrequency {
+  MONTHLY
+  QUARTERLY
+}
+
 enum StaffStatusEndReason {
   USER_SWITCHED
   USER_CLEARED
@@ -137,6 +142,7 @@ model Client {
   category            ClientCategory?
   bookkeepingSoftware BookkeepingSoftware? @map("bookkeeping_software")
   bookkeepingBy       BookkeepingBy?       @map("bookkeeping_by")
+  bookkeepingFrequency BookkeepingFrequency? @map("bookkeeping_frequency")
   createdAt           DateTime        @default(now()) @map("created_at")
   updatedAt           DateTime        @updatedAt @map("updated_at")
   jobs                Job[]
@@ -144,6 +150,7 @@ model Client {
 
   @@index([displayName])
   @@index([category])
+  @@index([bookkeepingFrequency])
   @@map("clients")
 }
 

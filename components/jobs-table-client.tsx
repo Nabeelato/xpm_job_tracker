@@ -14,7 +14,11 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { cn, formatDateTime, formatElapsedMilliseconds, titleCaseEnum } from "@/lib/utils";
-import { bulkOwnJobsAction, claimJobAction, releaseOwnJobAction } from "@/app/(app)/jobs/actions";
+import {
+  bulkOwnJobsAction,
+  claimJobAction,
+  releaseOwnJobAction,
+} from "@/app/(app)/jobs/actions";
 
 type RoleUser = { id: string; name: string | null };
 

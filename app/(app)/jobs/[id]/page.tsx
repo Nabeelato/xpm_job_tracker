@@ -10,7 +10,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { JobComments } from "@/components/job-comments";
-import { assignmentRoles, bookkeepingByLabels, bookkeepingSoftwareLabels, internalStatuses, userRoles } from "@/lib/constants";
+import {
+  assignmentRoles,
+  bookkeepingByLabels,
+  bookkeepingSoftwareLabels,
+  internalStatuses,
+  userRoles,
+} from "@/lib/constants";
 import { canAssignUserToRole, canManageJobAssignmentRole } from "@/lib/assignment-permissions";
 import { prisma } from "@/lib/db";
 import { detectDepartmentMismatch } from "@/lib/import/department";
@@ -48,7 +54,13 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
       archived: true,
       missingFromLatestImport: true,
       lastSeenAt: true,
-      client: { select: { displayName: true, bookkeepingSoftware: true, bookkeepingBy: true } },
+      client: {
+        select: {
+          displayName: true,
+          bookkeepingSoftware: true,
+          bookkeepingBy: true,
+        },
+      },
       finalDepartment: { select: { code: true } },
       autoDetectedDepartment: { select: { code: true } },
       assignments: {

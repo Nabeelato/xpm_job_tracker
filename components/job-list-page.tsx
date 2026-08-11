@@ -64,6 +64,7 @@ export async function JobListPage({
   const user = await requireUser();
   const rawParams = (await searchParams) ?? {};
   const params = toSearchParams(rawParams);
+  params.delete("bookkeepingFrequency");
 
   const effectivePreset: Preset = preset;
   const effectiveTitle = title ?? "";
@@ -99,7 +100,14 @@ export async function JobListPage({
           where: { stateNumber: { gte: 1, lte: 6 } },
           select: { stateNumber: true, enteredAt: true, exitedAt: true },
         },
-        client: { select: { displayName: true, category: true, bookkeepingSoftware: true, bookkeepingBy: true } },
+        client: {
+          select: {
+            displayName: true,
+            category: true,
+            bookkeepingSoftware: true,
+            bookkeepingBy: true,
+          },
+        },
         finalDepartment: { select: { code: true } },
         assignments: {
           where: { active: true },

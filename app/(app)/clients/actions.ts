@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { BookkeepingBy, BookkeepingSoftware, ClientCategory } from "@prisma/client";
+import { BookkeepingBy, BookkeepingFrequency, BookkeepingSoftware, ClientCategory } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/rbac";
 
@@ -18,8 +18,8 @@ export async function updateClientCategoryAction(formData: FormData) {
     raw === "" ? null : Object.values(ClientCategory).includes(raw as ClientCategory) ? (raw as ClientCategory) : null;
 
   const data =
-    category === "MANUAL"
-      ? { category, bookkeepingSoftware: null, bookkeepingBy: BookkeepingBy.FIRM }
+    category !== "SOFTWARE"
+      ? { category, bookkeepingSoftware: null, bookkeepingBy: BookkeepingBy.FIRM, bookkeepingFrequency: null }
       : { category };
 
   await prisma.client.update({
@@ -41,6 +41,8 @@ export async function updateClientBookkeepingAction(formData: FormData) {
 
   const rawSoftware = String(formData.get("bookkeepingSoftware") ?? "");
   const rawBy = String(formData.get("bookkeepingBy") ?? "");
+  const hasFrequency = formData.has("bookkeepingFrequency");
+  const rawFrequency = String(formData.get("bookkeepingFrequency") ?? "");
 
   const bookkeepingSoftware =
     rawSoftware === ""
@@ -56,11 +58,22 @@ export async function updateClientBookkeepingAction(formData: FormData) {
         ? (rawBy as BookkeepingBy)
         : null;
 
+  const bookkeepingFrequency =
+    rawFrequency === ""
+      ? null
+      : Object.values(BookkeepingFrequency).includes(rawFrequency as BookkeepingFrequency)
+        ? (rawFrequency as BookkeepingFrequency)
+        : null;
+
   const fromJobId = String(formData.get("fromJobId") ?? "");
 
   await prisma.client.update({
     where: { id: clientId },
-    data: { bookkeepingSoftware, bookkeepingBy },
+    data: {
+      bookkeepingSoftware,
+      bookkeepingBy,
+      ...(hasFrequency ? { bookkeepingFrequency } : {}),
+    },
   });
 
   revalidatePath(`/clients/${clientId}`);

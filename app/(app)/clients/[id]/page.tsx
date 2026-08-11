@@ -7,7 +7,13 @@ import { StatusBadge } from "@/components/status-badge";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { bookkeepingByLabels, bookkeepingSoftwareLabels, clientCategoryLabels } from "@/lib/constants";
+import {
+  bookkeepingByLabels,
+  bookkeepingFrequencies,
+  bookkeepingFrequencyLabels,
+  bookkeepingSoftwareLabels,
+  clientCategoryLabels,
+} from "@/lib/constants";
 import { prisma } from "@/lib/db";
 import { requireUser, visibleJobsWhere } from "@/lib/rbac";
 import { cn } from "@/lib/utils";
@@ -27,6 +33,7 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
       category: true,
       bookkeepingSoftware: true,
       bookkeepingBy: true,
+      bookkeepingFrequency: true,
       jobs: {
         where: jobVisibility,
         select: {
@@ -91,6 +98,7 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
               <span className="text-sm font-medium">
                 {bookkeepingSoftwareLabels[client.bookkeepingSoftware]}
                 {client.bookkeepingBy === "CLIENT" ? " - Client" : ""}
+                {client.bookkeepingFrequency ? ` · ${bookkeepingFrequencyLabels[client.bookkeepingFrequency]}` : ""}
               </span>
             ) : (
               <span className="text-sm text-muted-foreground">Not set</span>
@@ -109,6 +117,18 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
                   <option key={key} value={key}>{bookkeepingSoftwareLabels[key]}</option>
                 ))}
               </select>
+              {client.category === "SOFTWARE" ? (
+                <select
+                  className="rounded-md border border-input bg-background px-2 py-1 text-sm"
+                  defaultValue={client.bookkeepingFrequency ?? ""}
+                  name="bookkeepingFrequency"
+                >
+                  <option value="">Monthly / Quarterly not set</option>
+                  {bookkeepingFrequencies.map((frequency) => (
+                    <option key={frequency} value={frequency}>{bookkeepingFrequencyLabels[frequency]}</option>
+                  ))}
+                </select>
+              ) : null}
               <select
                 className="rounded-md border border-input bg-background px-2 py-1 text-sm"
                 defaultValue={client.bookkeepingBy ?? ""}

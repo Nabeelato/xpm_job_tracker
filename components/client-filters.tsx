@@ -2,14 +2,15 @@ import { Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
-import { bookkeepingByLabels, bookkeepingSoftwareLabels } from "@/lib/constants";
+import { bookkeepingByLabels, bookkeepingFrequencyLabels, bookkeepingSoftwareLabels } from "@/lib/constants";
 
 const bookkeepingSoftwareOptions = Object.entries(bookkeepingSoftwareLabels);
 const bookkeepingByOptions = Object.entries(bookkeepingByLabels);
+const bookkeepingFrequencyOptions = Object.entries(bookkeepingFrequencyLabels);
 
 export function ClientFilters({ params }: { params: URLSearchParams }) {
   return (
-    <form className="mb-4 grid gap-3 rounded-lg border bg-white p-4 md:grid-cols-3 xl:grid-cols-6">
+    <form className="mb-4 grid gap-3 rounded-lg border bg-white p-4 md:grid-cols-3 xl:grid-cols-7">
       {params.get("pageSize") ? <input name="pageSize" type="hidden" value={params.get("pageSize") ?? ""} /> : null}
       <div className="relative md:col-span-2">
         <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -53,6 +54,15 @@ export function ClientFilters({ params }: { params: URLSearchParams }) {
             {label}
           </option>
         ))}
+      </Select>
+      <Select defaultValue={params.get("bookkeepingFrequency") ?? ""} name="bookkeepingFrequency">
+        <option value="">Any BK cycle</option>
+        {bookkeepingFrequencyOptions.map(([value, label]) => (
+          <option key={value} value={value}>
+            {label}
+          </option>
+        ))}
+        <option value="unclassified">Cycle not set</option>
       </Select>
       <Button type="submit">Apply filters</Button>
     </form>
