@@ -11,7 +11,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { JobComments } from "@/components/job-comments";
-<<<<<<< HEAD
 import {
   assignmentRoles,
   bookkeepingByLabels,
@@ -20,10 +19,6 @@ import {
   userRoles,
 } from "@/lib/constants";
 import { canAssignUserToRole, canManageJobAssignmentRole } from "@/lib/assignment-permissions";
-=======
-import { assignmentRoles, bookkeepingByLabels, bookkeepingSoftwareLabels, internalStatuses, userRoles } from "@/lib/constants";
-import { canManageJobAssignmentRole } from "@/lib/assignment-permissions";
->>>>>>> 98030c33d2b5b6734971b89951ac08e33b691ab6
 import { prisma } from "@/lib/db";
 import { detectDepartmentMismatch } from "@/lib/import/department";
 import { summarizeJobStateTime } from "@/lib/job-state";
@@ -60,17 +55,14 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
       archived: true,
       missingFromLatestImport: true,
       lastSeenAt: true,
-<<<<<<< HEAD
       client: {
         select: {
           displayName: true,
+          category: true,
           bookkeepingSoftware: true,
           bookkeepingBy: true,
         },
       },
-=======
-      client: { select: { displayName: true, category: true, bookkeepingSoftware: true, bookkeepingBy: true } },
->>>>>>> 98030c33d2b5b6734971b89951ac08e33b691ab6
       finalDepartment: { select: { code: true } },
       autoDetectedDepartment: { select: { code: true } },
       assignments: {

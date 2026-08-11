@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-<<<<<<< HEAD
+import { bkDepartmentConflictReasons } from "@/lib/bk-department-conflicts";
 import {
   bookkeepingByLabels,
   bookkeepingFrequencies,
@@ -17,10 +17,6 @@ import {
   bookkeepingSoftwareLabels,
   clientCategoryLabels,
 } from "@/lib/constants";
-=======
-import { bookkeepingByLabels, bookkeepingSoftwareLabels, clientCategoryLabels } from "@/lib/constants";
-import { bkDepartmentConflictReasons } from "@/lib/bk-department-conflicts";
->>>>>>> 98030c33d2b5b6734971b89951ac08e33b691ab6
 import { prisma } from "@/lib/db";
 import { requireUser, visibleJobsWhere } from "@/lib/rbac";
 import { cn } from "@/lib/utils";
