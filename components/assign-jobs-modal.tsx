@@ -3,8 +3,10 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { bulkAssignJobRolesAction } from "@/app/(app)/jobs/actions";
+import { useClientCategoryConfirm } from "@/components/client-category-confirm-dialog";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
+import { isIrfanSourcePerson, isTaahaSourcePerson } from "@/lib/import/department";
 
 type RoleUser = { id: string; name: string | null };
 type SelectedJob = { id: string; departmentCode: string };
@@ -19,6 +21,7 @@ export function AssignJobsModal({ open, onClose, selectedJobs, managerUsers, sup
   const [isPending, startTransition] = useTransition();
   const [operation, setOperation] = useState<"ASSIGN" | "UNASSIGN">("ASSIGN");
   const [role, setRole] = useState<Role>("MANAGER");
+  const { confirm: confirmClientCategory, dialog: clientCategoryDialog } = useClientCategoryConfirm();
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -33,13 +36,29 @@ export function AssignJobsModal({ open, onClose, selectedJobs, managerUsers, sup
     .map(([code, count]) => `${code}: ${count}`).join(" | ");
   const users = role === "MANAGER" ? managerUsers : role === "SUPERVISOR" ? supervisorUsers : staffUsers;
 
-  function submit(event: React.FormEvent<HTMLFormElement>) {
+  async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const formData = new FormData(event.currentTarget);
     const message = operation === "UNASSIGN"
       ? `Remove ${role === "ALL" ? "all" : role.toLowerCase()} assignments from ${selectedJobs.length} selected jobs?`
-      : `Add this ${role.toLowerCase()} to ${selectedJobs.length} selected jobs? Existing assignments will remain.`;
-    if (!confirm(message)) return;
+      : role === "MANAGER"
+        ? `Add this manager to ${selectedJobs.length} selected jobs? Existing managers will remain.`
+        : `Assign this ${role.toLowerCase()} to jobs where that role is currently empty?`;
+
+    if (operation === "ASSIGN" && role === "MANAGER") {
+      const targetUserId = String(formData.get("userId") ?? "");
+      const target = managerUsers.find((candidate) => candidate.id === targetUserId);
+      if (target && (isIrfanSourcePerson(target.name) || isTaahaSourcePerson(target.name))) {
+        const choice = await confirmClientCategory(target.name ?? "This manager", `${selectedJobs.length} selected jobs' clients`);
+        if (!choice) return;
+        formData.set("clientCategory", choice);
+      } else if (!confirm(message)) {
+        return;
+      }
+    } else if (!confirm(message)) {
+      return;
+    }
+
     startTransition(async () => {
       await bulkAssignJobRolesAction(formData);
       onClose();
@@ -48,7 +67,9 @@ export function AssignJobsModal({ open, onClose, selectedJobs, managerUsers, sup
   }
 
   return (
-    <dialog className="w-full max-w-md rounded-xl border bg-background p-0 shadow-xl backdrop:bg-black/40"
+    <>
+      {clientCategoryDialog}
+      <dialog className="w-full max-w-md rounded-xl border bg-background p-0 shadow-xl backdrop:bg-black/40"
       onClick={(event) => { if (event.target === dialogRef.current) onClose(); }} ref={dialogRef}>
       <div className="space-y-5 p-6">
         <div>
@@ -84,16 +105,17 @@ export function AssignJobsModal({ open, onClose, selectedJobs, managerUsers, sup
             </Select>
           </label> : null}
           <p className="rounded-md bg-muted p-3 text-xs text-muted-foreground">
-            Assign adds without replacing existing users. Unassign can remove one user, a complete role, or every assignment.
+            Managers can be added alongside existing managers. Staff and supervisor assignments are managed independently and are limited to one per job, so occupied roles are skipped. Unassign can remove one user, a complete role, or every assignment.
           </p>
           <div className="flex justify-end gap-2">
             <Button disabled={isPending} onClick={onClose} type="button" variant="outline">Cancel</Button>
-            <Button disabled={isPending} type="submit" variant={operation === "UNASSIGN" ? "destructive" : "default"}>
-              {isPending ? "Applying…" : operation === "ASSIGN" ? "Assign selected" : "Unassign selected"}
+            <Button disabled={isPending} loading={isPending} loadingLabel="Applying…" type="submit" variant={operation === "UNASSIGN" ? "destructive" : "default"}>
+              {operation === "ASSIGN" ? "Assign selected" : "Unassign selected"}
             </Button>
           </div>
         </form>
       </div>
-    </dialog>
+      </dialog>
+    </>
   );
 }

@@ -7,6 +7,7 @@ import { ArrowDown, ArrowUp, ArrowUpDown, TriangleAlert } from "lucide-react";
 import { formatDistanceToNowStrict } from "date-fns";
 import type { BookkeepingBy, BookkeepingSoftware, ClientCategory } from "@prisma/client";
 import { bookkeepingSoftwareLabels } from "@/lib/constants";
+import { isTimedJobState, isWorkflowJobState } from "@/lib/job-state";
 import { AssignJobsModal } from "@/components/assign-jobs-modal";
 import { AssignSingleJobModal } from "@/components/assign-single-job-modal";
 import { DepartmentBadge } from "@/components/department-badge";
@@ -20,7 +21,7 @@ import {
   releaseOwnJobAction,
 } from "@/app/(app)/jobs/actions";
 
-type RoleUser = { id: string; name: string | null };
+type RoleUser = { id: string; name: string | null; supervisorId?: string | null };
 
 type Assignment = {
   id: string;
@@ -46,6 +47,7 @@ export type JobRow = {
   stateIdleAccumulatedMs: number;
   stateIdleActiveEnteredAt: Date | null;
   assignments: Assignment[];
+  canInteract: boolean;
 };
 
 export function JobsTableClient({
@@ -58,11 +60,11 @@ export function JobsTableClient({
   isMyJobs = false,
   managerUsers,
   supervisorUsers,
-  crossRoleStaffUsers,
-  staffBySupervisorId,
+  staffUsers,
   showAssignmentAge = false,
   showStateAge = false,
   userWorkload = {},
+  sortParams,
   sortBy = "",
   sortDir = "asc",
 }: {
@@ -75,11 +77,11 @@ export function JobsTableClient({
   isMyJobs?: boolean;
   managerUsers: RoleUser[];
   supervisorUsers: RoleUser[];
-  crossRoleStaffUsers: RoleUser[];
-  staffBySupervisorId: Record<string, RoleUser[]>;
+  staffUsers: RoleUser[];
   showAssignmentAge?: boolean;
   showStateAge?: boolean;
   userWorkload?: Record<string, Record<string, number>>;
+  sortParams?: string;
   sortBy?: string;
   sortDir?: "asc" | "desc";
 }) {
@@ -97,7 +99,7 @@ export function JobsTableClient({
   useEffect(() => setDisplayedJobs(jobs), [jobs]);
 
   function handleSort(col: string) {
-    const params = new URLSearchParams(searchParams.toString());
+    const params = new URLSearchParams(sortParams ?? searchParams.toString());
     if (params.get("sortBy") === col) {
       params.set("sortDir", params.get("sortDir") === "asc" ? "desc" : "asc");
     } else {
@@ -190,8 +192,8 @@ export function JobsTableClient({
           </span>
           {isAdmin ? <Button onClick={() => setModalOpen(true)} size="sm">Bulk assign / unassign</Button> : (
             <>
-              {isAvailableQueue ? <Button onClick={() => void runBulkOwnAction("CLAIM")} size="sm">Bulk claim</Button> : null}
-              {isMyJobs ? <Button onClick={() => void runBulkOwnAction("RELEASE")} size="sm" variant="destructive">Bulk remove</Button> : null}
+              {isAvailableQueue ? <Button loadingLabel="Claiming..." onClick={() => runBulkOwnAction("CLAIM")} size="sm">Bulk claim</Button> : null}
+              {isMyJobs ? <Button loadingLabel="Removing..." onClick={() => runBulkOwnAction("RELEASE")} size="sm" variant="destructive">Bulk remove</Button> : null}
             </>
           )}
           <Button onClick={clearSelection} size="sm" variant="ghost">
@@ -208,9 +210,7 @@ export function JobsTableClient({
         }}
         open={modalOpen}
         selectedJobs={selectedJobsForModal}
-        staffUsers={Array.from(new Map(
-          [...Object.values(staffBySupervisorId).flat(), ...crossRoleStaffUsers].map((staff) => [staff.id, staff]),
-        ).values()).sort((a, b) => (a.name ?? "").localeCompare(b.name ?? ""))}
+        staffUsers={staffUsers}
         supervisorUsers={supervisorUsers}
       />
 
@@ -219,23 +219,26 @@ export function JobsTableClient({
         if (!assigningJob) return null;
         return (
           <AssignSingleJobModal
-            currentUserId={currentUserId ?? ""}
             currentUserRole={currentUserRole}
             job={{
               id: assigningJob.id,
               jobIdFromExcel: assigningJob.jobIdFromExcel,
+              clientId: assigningJob.clientId,
               clientName: assigningJob.clientName,
+              clientCategory: assigningJob.clientCategory,
               departmentCode: assigningJob.departmentCode,
               assignments: assigningJob.assignments,
             }}
             managerUsers={managerUsers}
-            onClose={() => setAssigningJobId(null)}
             onAssignmentsChange={(assignments) => setDisplayedJobs((current) => current.map((job) =>
               job.id === assigningJob.id ? { ...job, assignments } : job,
             ))}
+            onClientCategoryChange={(clientCategory) => setDisplayedJobs((current) => current.map((job) =>
+              job.clientId === assigningJob.clientId ? { ...job, clientCategory } : job,
+            ))}
+            onClose={() => setAssigningJobId(null)}
             open={true}
-            crossRoleStaffUsers={crossRoleStaffUsers}
-            staffBySupervisorId={staffBySupervisorId}
+            staffUsers={staffUsers}
             supervisorUsers={supervisorUsers}
             userWorkload={userWorkload}
           />
@@ -284,7 +287,7 @@ export function JobsTableClient({
                 currentUserRole === "SUPERVISOR" ? "SUPERVISOR" : "MANAGER";
               const isClaimable = isAvailableQueue && currentUserRole !== "ADMIN" &&
                 !job.assignments.some((assignment) => assignment.assignmentRole === claimRole) &&
-                Boolean(job.jobStateNumber && [3, 4, 5, 6].includes(job.jobStateNumber));
+                isWorkflowJobState(job.jobStateNumber, job.xpmState);
               const ownAssignment = job.assignments.find((assignment) =>
                 assignment.user.id === currentUserId && assignment.assignmentRole === claimRole,
               );
@@ -298,7 +301,7 @@ export function JobsTableClient({
               const isSoftware = job.clientCategory === "SOFTWARE";
               const isCancelled = job.jobStateNumber === 12;
               const isCompleted = job.jobStateNumber === 11;
-              const isTimedState = job.jobStateNumber !== null && job.jobStateNumber >= 1 && job.jobStateNumber <= 6;
+              const isTimedState = isTimedJobState(job.jobStateNumber);
               const activeStateElapsedMs = job.stateIdleActiveEnteredAt
                 ? Math.max(0, Date.now() - job.stateIdleActiveEnteredAt.getTime())
                 : 0;
@@ -307,8 +310,8 @@ export function JobsTableClient({
                 <TableRow
                   className={cn(
                     isSoftware && "bg-yellow-100 hover:bg-yellow-200",
-                    isCompleted && "bg-green-50 hover:bg-green-100 dark:bg-green-950/20",
-                    isCancelled && "bg-red-50 hover:bg-red-100 dark:bg-red-950/20",
+                    !isSoftware && isCompleted && "bg-green-50 hover:bg-green-100 dark:bg-green-950/20",
+                    !isSoftware && isCancelled && "bg-red-50 hover:bg-red-100 dark:bg-red-950/20",
                     isChecked && "bg-primary/10 hover:bg-primary/15",
                   )}
                   key={job.id}
@@ -414,7 +417,7 @@ export function JobsTableClient({
                         {claimingJobId === job.id ? "Claiming…" : "Claim job"}
                       </Button>
                     </TableCell>
-                  ) : (isAdmin || isSupervisor || currentUserRole === "MANAGER") ? (
+                  ) : (isAdmin || (job.canInteract && (isSupervisor || currentUserRole === "MANAGER"))) ? (
                     <TableCell>
                       <Button
                         onClick={() => setAssigningJobId(job.id)}

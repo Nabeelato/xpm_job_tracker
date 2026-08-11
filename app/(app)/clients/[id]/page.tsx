@@ -1,12 +1,15 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { TriangleAlert } from "lucide-react";
 import { ClientCategorySelect } from "@/components/client-category-select";
 import { DepartmentBadge } from "@/components/department-badge";
 import { PageHeader } from "@/components/page-header";
 import { StatusBadge } from "@/components/status-badge";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+<<<<<<< HEAD
 import {
   bookkeepingByLabels,
   bookkeepingFrequencies,
@@ -14,6 +17,10 @@ import {
   bookkeepingSoftwareLabels,
   clientCategoryLabels,
 } from "@/lib/constants";
+=======
+import { bookkeepingByLabels, bookkeepingSoftwareLabels, clientCategoryLabels } from "@/lib/constants";
+import { bkDepartmentConflictReasons } from "@/lib/bk-department-conflicts";
+>>>>>>> 98030c33d2b5b6734971b89951ac08e33b691ab6
 import { prisma } from "@/lib/db";
 import { requireUser, visibleJobsWhere } from "@/lib/rbac";
 import { cn } from "@/lib/utils";
@@ -57,6 +64,15 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
 
   if (!client || client.jobs.length === 0) notFound();
 
+  const conflictJobs = await prisma.job.findMany({
+    where: { clientId: client.id, archived: false },
+    select: {
+      sourcePartnerName: true,
+      finalDepartment: { select: { code: true } },
+    },
+  });
+  const conflictReasons = bkDepartmentConflictReasons(conflictJobs);
+
   const counts = {
     total: client.jobs.length,
     active: client.jobs.filter((job) => !job.archived).length,
@@ -75,6 +91,23 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
   return (
     <>
       <PageHeader title={client.displayName} description="Client detail with all visible jobs grouped by department." />
+      {conflictReasons.length ? (
+        <div className="mb-4 flex items-start gap-3 rounded-lg border border-orange-300 bg-orange-50 p-4 text-orange-950">
+          <TriangleAlert className="mt-0.5 h-5 w-5 shrink-0" />
+          <div>
+            <div className="font-medium">BK department confirmation required</div>
+            <p className="mt-1 text-sm">
+              {conflictReasons.includes("mixed_departments")
+                ? "This client's active jobs are split between BK and Software BK. "
+                : ""}
+              {conflictReasons.includes("mixed_source_partners")
+                ? "The active jobs also include both Taaha and Irfan as XPM source partners. "
+                : ""}
+              Review each affected job and confirm whether it belongs in BK or Software BK.
+            </p>
+          </div>
+        </div>
+      ) : null}
       <Card className="mb-4">
         <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4">
           <div className="flex items-center gap-3">
@@ -139,12 +172,9 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
                   <option key={key} value={key}>{bookkeepingByLabels[key]}</option>
                 ))}
               </select>
-              <button
-                className="rounded-md bg-primary px-3 py-1 text-xs font-medium text-primary-foreground hover:bg-primary/90"
-                type="submit"
-              >
+              <Button loadingLabel="Saving..." size="sm" type="submit">
                 Save
-              </button>
+              </Button>
             </form>
           ) : null}
         </CardContent>

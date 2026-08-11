@@ -3,7 +3,7 @@ import { parse } from "csv-parse/sync";
 import { createHash } from "crypto";
 import { z } from "zod";
 import { defaultUploadHeaders, maxUploadSizeBytes, requiredUploadHeaders } from "@/lib/constants";
-import { detectDepartment, detectDepartmentFromManager, type DepartmentCode } from "@/lib/import/department";
+import { detectImportDepartment, type DepartmentCode } from "@/lib/import/department";
 import { normalizeHeader, optionalText, sanitizeText } from "@/lib/import/normalize";
 import { parseJobStateNumber } from "@/lib/job-state";
 
@@ -97,7 +97,7 @@ function buildRows(records: Array<{ rowNumber: number; rawData: Record<string, s
       jobStateNumber: parseJobStateNumber(xpmState),
       managerName,
       partnerName,
-      detectedDepartmentCode: detectDepartmentFromManager(managerName) ?? detectDepartment(jobName, clientName),
+      detectedDepartmentCode: detectImportDepartment(managerName, jobName),
       errorMessage: errors.length ? errors.join(" ") : null,
     };
   });

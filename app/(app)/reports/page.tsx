@@ -2,7 +2,8 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { Download, ExternalLink } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
-import { buttonVariants } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button-variants";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
@@ -47,10 +48,10 @@ function ReportCard({
       <CardContent>
         <form action={action} className="grid gap-3 md:grid-cols-2" method="GET">
           {children}
-          <button className={cn(buttonVariants(), "md:col-span-2")} type="submit">
+          <Button className="md:col-span-2" loadingLabel="Preparing Excel..." type="submit">
             <Download className="h-4 w-4" />
             Download Excel
-          </button>
+          </Button>
         </form>
       </CardContent>
     </Card>
@@ -129,6 +130,26 @@ export default async function ReportsPage() {
         description="Filter, preview, and export Excel reports using your allowed hierarchy scope."
         title="Report Center"
       />
+
+      <Card className="mb-5 border-sky-200 bg-sky-50/50">
+        <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4">
+          <div>
+            <div className="font-semibold">Current Jobs Hierarchy</div>
+            <div className="text-sm text-muted-foreground">Graphic Manager/Admin → Supervisor → Staff → Job and duration view.</div>
+          </div>
+          <Link className={buttonVariants()} href="/reports/hierarchy">Open graphic report</Link>
+        </CardContent>
+      </Card>
+
+      <Card className="mb-5 border-orange-200 bg-orange-50/50">
+        <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4">
+          <div>
+            <div className="font-semibold">BK / Software Conflicts</div>
+            <div className="text-sm text-muted-foreground">Clients whose active jobs disagree between BK and Software BK, or between Taaha and Irfan as source partners.</div>
+          </div>
+          <Link className={buttonVariants()} href="/reports/bk-conflicts">Open conflict report</Link>
+        </CardContent>
+      </Card>
 
       <div className="mb-5 grid gap-4 xl:grid-cols-2">
         <ReportCard

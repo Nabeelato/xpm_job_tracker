@@ -43,8 +43,8 @@ export default async function UsersPage({
 
   const countByUser = new Map(assignmentCounts.map((c) => [c.userId, c._count._all]));
 
-  const supervisors = users.filter(
-    (user) => user.role === "SUPERVISOR" || user.role === "MANAGER" || user.role === "ADMIN",
+  const hierarchyParents = users.filter(
+    (user) => user.active && (user.role === "SUPERVISOR" || user.role === "MANAGER" || user.role === "ADMIN"),
   );
 
   const transferTargets = users
@@ -100,7 +100,7 @@ export default async function UsersPage({
               <CardTitle>Create User</CardTitle>
             </CardHeader>
             <CardContent>
-              <CreateUserForm departments={departments} supervisors={supervisors} />
+              <CreateUserForm departments={departments} hierarchyParents={hierarchyParents} />
             </CardContent>
           </Card>
 
@@ -127,7 +127,7 @@ export default async function UsersPage({
                       currentUserId={currentUser.id}
                       departments={departments}
                       key={row.id}
-                      supervisors={supervisors}
+                      hierarchyParents={hierarchyParents}
                       transferTargets={transferTargets}
                       user={row}
                     />

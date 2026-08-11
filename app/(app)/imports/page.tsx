@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { FileUp } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
-import { buttonVariants } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button-variants";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { prisma } from "@/lib/db";
 import { requireRole } from "@/lib/rbac";

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Archive, TriangleAlert, UserPlus } from "lucide-react";
+import { AssignManagerInlineForm } from "@/components/assign-manager-inline-form";
 import { DepartmentBadge } from "@/components/department-badge";
 import { JobStateIdleTime } from "@/components/job-idle-time";
 import { PageHeader } from "@/components/page-header";
@@ -10,6 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { JobComments } from "@/components/job-comments";
+<<<<<<< HEAD
 import {
   assignmentRoles,
   bookkeepingByLabels,
@@ -18,6 +20,10 @@ import {
   userRoles,
 } from "@/lib/constants";
 import { canAssignUserToRole, canManageJobAssignmentRole } from "@/lib/assignment-permissions";
+=======
+import { assignmentRoles, bookkeepingByLabels, bookkeepingSoftwareLabels, internalStatuses, userRoles } from "@/lib/constants";
+import { canManageJobAssignmentRole } from "@/lib/assignment-permissions";
+>>>>>>> 98030c33d2b5b6734971b89951ac08e33b691ab6
 import { prisma } from "@/lib/db";
 import { detectDepartmentMismatch } from "@/lib/import/department";
 import { summarizeJobStateTime } from "@/lib/job-state";
@@ -54,6 +60,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
       archived: true,
       missingFromLatestImport: true,
       lastSeenAt: true,
+<<<<<<< HEAD
       client: {
         select: {
           displayName: true,
@@ -61,6 +68,9 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
           bookkeepingBy: true,
         },
       },
+=======
+      client: { select: { displayName: true, category: true, bookkeepingSoftware: true, bookkeepingBy: true } },
+>>>>>>> 98030c33d2b5b6734971b89951ac08e33b691ab6
       finalDepartment: { select: { code: true } },
       autoDetectedDepartment: { select: { code: true } },
       assignments: {
@@ -100,16 +110,19 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
   });
 
   if (!job) return null;
-  const canInteract = canInteractWithJob(user, {
+  const accessJob = {
     assignments: job.assignments.map((assignment) => ({
       userId: assignment.userId,
       assignmentRole: assignment.assignmentRole,
     })),
     finalDepartmentId: job.finalDepartmentId,
+    sourceManagerName: job.sourceManagerName,
     jobStateNumber: job.jobStateNumber,
+    xpmState: job.xpmState,
     archived: job.archived,
-  });
-  const departmentWarningCode = detectDepartmentMismatch(job.jobName, job.finalDepartment.code);
+  };
+  const canInteract = canInteractWithJob(user, accessJob);
+  const departmentWarningCode = detectDepartmentMismatch(job.jobName, job.finalDepartment.code, job.sourceManagerName);
 
   const [departments, users] = await Promise.all([
     prisma.department.findMany({ where: { active: true }, orderBy: { code: "asc" }, select: { id: true, name: true } }),
@@ -161,10 +174,11 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
               <dl className="grid gap-4 text-sm md:grid-cols-2">
                 <div>
                   <dt className="text-muted-foreground">Client</dt>
-                  <dd className="font-medium">
+                  <dd className="flex flex-wrap items-center gap-1.5 font-medium">
                     <Link className="text-primary hover:underline" href={`/clients/${job.clientId}`}>
                       {job.client.displayName}
                     </Link>
+                    {job.client.category === "SOFTWARE" ? <Badge variant="softwareBk">Software Client</Badge> : null}
                   </dd>
                 </div>
                 <div>
@@ -344,9 +358,23 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
               <CardContent className="space-y-4">
                 <div className="space-y-3">
                   {assignmentRoles.map((assignmentRole) => {
-                    const candidates = users.filter((candidate) =>
-                      canAssignUserToRole(user, candidate, assignmentRole),
-                    );
+                    const candidates = users.filter((candidate) => canManageJobAssignmentRole({
+                      actor: user,
+                      assignee: candidate,
+                      assignmentRole,
+                      activeAssignments: activeAssignmentRefs,
+                      operation: "ASSIGN",
+                    }));
+                    if (assignmentRole === "MANAGER") {
+                      return (
+                        <AssignManagerInlineForm
+                          candidates={candidates}
+                          clientName={job.client.displayName}
+                          jobId={job.id}
+                          key={assignmentRole}
+                        />
+                      );
+                    }
                     return (
                       <form action={assignJobAction} className="grid gap-2 sm:grid-cols-[1fr_auto]" key={assignmentRole}>
                         <input name="jobId" type="hidden" value={job.id} />

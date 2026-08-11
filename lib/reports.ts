@@ -3,7 +3,14 @@ import { NextResponse } from "next/server";
 import type { AssignmentRole, Prisma, UserRole } from "@prisma/client";
 import { exactStateWhere, stateGroupWhere, workflowStateWhere, xpmSubStateWhere, type JobStateGroup, type XpmSubState } from "@/lib/job-state";
 import { formatDateTime, titleCaseEnum } from "@/lib/utils";
-import { availableJobsWhere, visibleJobsWhere, type AppSessionUser } from "@/lib/rbac";
+import {
+  availableJobsWhere,
+  isXpmOnlyJobViewer,
+  visibleAvailableQueueJobsWhere,
+  visibleJobsWhere,
+  xpmSourceManagerJobsWhere,
+  type AppSessionUser,
+} from "@/lib/rbac";
 
 export const REPORT_EXPORT_LIMIT = 25_000;
 
@@ -93,7 +100,7 @@ function isXpmSubState(value: string | undefined): value is XpmSubState {
 function stateFilterWhere(value: string | undefined): Prisma.JobWhereInput | null | undefined {
   if (!value) return undefined;
   if (value === "all") return null;
-  if (value === "main") return { jobStateNumber: { in: [2, 3, 4, 5, 6] } };
+  if (value === "main") return workflowStateWhere();
   if (value === "workflow") return workflowStateWhere();
   if (value === "state_3_1") return xpmSubStateWhere("job_on_hold");
   if (value === "state_3_2") return xpmSubStateWhere("ifza_check");
@@ -112,6 +119,7 @@ function stateFilterWhere(value: string | undefined): Prisma.JobWhereInput | nul
 
 export function reportScopeWhere(user: AppSessionUser): Prisma.JobWhereInput {
   if (user.role === "ADMIN" || user.departmentCode === "QC") return {};
+  if (isXpmOnlyJobViewer(user)) return xpmSourceManagerJobsWhere(user);
 
   if (user.role === "MANAGER") {
     const scoped: Prisma.JobWhereInput[] = [
@@ -192,7 +200,7 @@ export function buildJobReportWhere(
   const queueVacancy = param(params, "queueVacancy");
 
   if (myJobs === "true") and.push({ assignments: { some: { userId: user.id, active: true } } });
-  if (availableJobs === "true") and.push(availableJobsWhere(user));
+  if (availableJobs === "true") and.push(visibleAvailableQueueJobsWhere(user));
   if (availableJobs === "true") {
     if (queueVacancy === "MANAGER" || queueVacancy === "SUPERVISOR" || queueVacancy === "STAFF") {
       and.push({ assignments: { none: { active: true, assignmentRole: queueVacancy } } });
@@ -257,7 +265,7 @@ export function buildJobReportWhere(
   } else if (stateGroup && isStateGroup(stateGroup)) {
     and.push(stateGroupWhere(stateGroup));
   } else if (stateSet === "main") {
-    and.push({ jobStateNumber: { in: [2, 3, 4, 5, 6] } });
+    and.push(workflowStateWhere());
   } else if (stateSet === "workflow") {
     and.push(workflowStateWhere());
   } else if (stateSet === "other") {

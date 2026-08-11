@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { DepartmentBadge } from "@/components/department-badge";
 import { Badge } from "@/components/ui/badge";
-import { buttonVariants } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button-variants";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { jobStateOptions } from "@/lib/constants";
@@ -22,7 +22,7 @@ export type ImportBreakdownRow = {
 };
 
 const importableActions = new Set(["NEW_JOB", "UPDATE_JOB", "UNCHANGED"]);
-const stateNumbers = [2, 3, 4, 5, 6];
+const stateNumbers = [3, 4, 5, 6];
 const departmentStateNumbers = new Set([3, 4, 5, 6]);
 const departmentSections = [
   { code: "VAT", title: "VAT", href: "/jobs?department=VAT&stateSet=workflow" },

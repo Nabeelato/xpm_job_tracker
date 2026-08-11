@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { isTimedJobState } from "@/lib/job-state";
 import { formatDateTime, formatElapsedMilliseconds } from "@/lib/utils";
 
 export function JobStateIdleTime({
@@ -20,7 +21,7 @@ export function JobStateIdleTime({
     return () => clearInterval(id);
   }, [activeEnteredAt]);
 
-  if (stateNumber === null || stateNumber < 1 || stateNumber > 6) return <>-</>;
+  if (!isTimedJobState(stateNumber)) return <>-</>;
   const enteredAt = activeEnteredAt
     ? typeof activeEnteredAt === "string" ? new Date(activeEnteredAt) : activeEnteredAt
     : null;

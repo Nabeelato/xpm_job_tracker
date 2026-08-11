@@ -26,21 +26,31 @@ async function main() {
   const { ADMIN_EMAIL, ADMIN_PASSWORD, ADMIN_NAME } = process.env;
 
   if (ADMIN_EMAIL && ADMIN_PASSWORD && ADMIN_NAME) {
+    const bootstrapUsername = ADMIN_EMAIL.toLowerCase();
+    const requestedAdminUsernames = ["maaz.imran", "irfan.tanwir", "taaha.sheikh"];
+    const otherActiveAdmins = await prisma.user.count({
+      where: {
+        active: true,
+        role: UserRole.ADMIN,
+        username: { not: bootstrapUsername },
+      },
+    });
+    const bootstrapActive = requestedAdminUsernames.includes(bootstrapUsername) || otherActiveAdmins === 0;
     const passwordHash = await bcrypt.hash(ADMIN_PASSWORD, 12);
     await prisma.user.upsert({
-      where: { username: ADMIN_EMAIL.toLowerCase() },
+      where: { username: bootstrapUsername },
       update: {
         name: ADMIN_NAME,
         passwordHash,
         role: UserRole.ADMIN,
-        departmentId: null,
-        active: true,
+        active: bootstrapActive,
       },
       create: {
         name: ADMIN_NAME,
-        username: ADMIN_EMAIL.toLowerCase(),
+        username: bootstrapUsername,
         passwordHash,
         role: UserRole.ADMIN,
+        active: bootstrapActive,
       },
     });
   } else {

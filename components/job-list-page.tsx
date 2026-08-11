@@ -6,14 +6,19 @@ import { JobFilters, type JobTabsConfig } from "@/components/job-filters";
 import { JobsTableClient, type JobRow } from "@/components/jobs-table-client";
 import { PageHeader } from "@/components/page-header";
 import { Pagination } from "@/components/pagination";
-import { buttonVariants } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button-variants";
 import { managerUserRoles } from "@/lib/constants";
 import { prisma } from "@/lib/db";
 import { detectDepartmentMismatch } from "@/lib/import/department";
+import {
+  applyDefaultJobFilters,
+  hasExplicitAllJobsFilters,
+  parseDefaultJobFilters,
+} from "@/lib/job-filter-preferences";
 import { summarizeJobStateTime, type JobStateGroup } from "@/lib/job-state";
 import { buildJobReportOrderBy, buildJobReportWhere } from "@/lib/reports";
 import { getSystemSetting } from "@/lib/settings";
-import { requireUser } from "@/lib/rbac";
+import { canInteractWithJob, requireUser } from "@/lib/rbac";
 import { cn, parsePageSize, searchParam, toInt, toSearchParams, withPageSizeParam } from "@/lib/utils";
 
 type Preset = {
@@ -73,10 +78,26 @@ export async function JobListPage({
   const { pageSize, pageSizeOption } = parsePageSize(searchParam(rawParams, "pageSize"));
   const page = toInt(searchParam(rawParams, "page"), 1);
   const pageParams = withPageSizeParam(params, pageSizeOption);
+  const savedDefaultFilters = effectivePreset.allJobs
+    ? parseDefaultJobFilters((await prisma.user.findUnique({
+        where: { id: user.id },
+        select: { defaultJobFilters: true },
+      }))?.defaultJobFilters)
+    : null;
+  if (
+    effectivePreset.allJobs &&
+    params.get("defaultFilters") !== "off" &&
+    !hasExplicitAllJobsFilters(params)
+  ) {
+    if (savedDefaultFilters) {
+      applyDefaultJobFilters(pageParams, savedDefaultFilters);
+      pageParams.set("defaultFilters", "off");
+    }
+  }
   const filterParams = paramsWithPreset(pageParams, effectivePreset);
   const sortBy = searchParam(rawParams, "sortBy");
   const sortDir = (searchParam(rawParams, "sortDir") ?? "asc") as "asc" | "desc";
-  const dataScope = effectivePreset.allJobs ? "all" : "visible";
+  const dataScope = effectivePreset.allJobs || effectivePreset.myJobs ? "all" : "visible";
   const where = buildJobReportWhere(filterParams, user, { scope: dataScope });
 
   const [showAssignmentAge, showStateAge] = await Promise.all([
@@ -92,10 +113,13 @@ export async function JobListPage({
         jobIdFromExcel: true,
         clientId: true,
         jobName: true,
+        finalDepartmentId: true,
         xpmState: true,
         jobStateNumber: true,
+        sourceManagerName: true,
         stateEnteredAt: true,
         missingFromLatestImport: true,
+        archived: true,
         stateTimeRecords: {
           where: { stateNumber: { gte: 1, lte: 6 } },
           select: { stateNumber: true, enteredAt: true, exitedAt: true },
@@ -135,7 +159,7 @@ export async function JobListPage({
       orderBy: { name: "asc" },
       select: { id: true, name: true, role: true, departmentId: true, supervisorId: true },
     }),
-    // Active assignment counts per user, per department — workflow states 3-6 only
+    // Active assignment counts per user, per department — workflow states 3-7 only
     prisma.jobAssignment.findMany({
       where: {
         active: true,
@@ -156,36 +180,34 @@ export async function JobListPage({
 
   const isAdmin = user.role === "ADMIN";
   const isSupervisor = user.role === "SUPERVISOR";
+  const hasGlobalAssignmentScope = isAdmin || (user.role === "MANAGER" && user.departmentCode === "QC");
   const isSameDepartment = (candidate: (typeof users)[number]) =>
     Boolean(user.departmentId) && candidate.departmentId === user.departmentId;
   const currentUserOption = users.find((candidate) => candidate.id === user.id);
   const managerUsers = users.filter((candidate) =>
-    managerUserRoles.includes(candidate.role) && (isAdmin || isSameDepartment(candidate)),
+    managerUserRoles.includes(candidate.role) && (hasGlobalAssignmentScope || isSameDepartment(candidate)),
   );
-  const elevatedUsers = users.filter((candidate) => candidate.role !== "STAFF");
-  const supervisorUsers = isAdmin
-    ? elevatedUsers
+  const supervisorUsers = hasGlobalAssignmentScope
+    ? users.filter((candidate) => candidate.role === "SUPERVISOR")
     : user.role === "MANAGER"
       ? users.filter((candidate) =>
-          (candidate.role === "SUPERVISOR" && isSameDepartment(candidate)) || candidate.id === user.id,
+          candidate.role === "SUPERVISOR" && isSameDepartment(candidate),
         )
       : user.role === "SUPERVISOR" && currentUserOption
         ? [currentUserOption]
         : [];
-  const crossRoleStaffUsers = isAdmin
-    ? elevatedUsers
-    : (user.role === "MANAGER" || user.role === "SUPERVISOR") && currentUserOption
-      ? [currentUserOption]
-      : [];
-
-  const staffBySupId = new Map<string, { id: string; name: string | null }[]>();
-  for (const u of users) {
-    if (u.role === "STAFF" && u.supervisorId) {
-      const list = staffBySupId.get(u.supervisorId) ?? [];
-      list.push({ id: u.id, name: u.name });
-      staffBySupId.set(u.supervisorId, list);
-    }
-  }
+  const staffUsers = users
+    .filter((candidate) =>
+      candidate.role === "STAFF" &&
+      (hasGlobalAssignmentScope ||
+        (user.role === "MANAGER" && isSameDepartment(candidate)) ||
+        (user.role === "SUPERVISOR" && candidate.supervisorId === user.id)),
+    )
+    .map((candidate) => ({
+      id: candidate.id,
+      name: candidate.name,
+      supervisorId: candidate.supervisorId,
+    }));
 
   // Build workload map: userId → { deptCode: count }
   const userWorkload: Record<string, Record<string, number>> = {};
@@ -258,6 +280,7 @@ export async function JobListPage({
         basePath={basePath}
         config={effectivePreset.tabs}
         departments={departments}
+        hasSavedDefaultFilters={Boolean(savedDefaultFilters)}
         hasPresetState={Boolean(effectivePreset.stateGroup || effectivePreset.stateSet || effectivePreset.stateNumbers?.length)}
         lockedMissing={effectivePreset.missing !== undefined}
         params={filterParams.toString()}
@@ -290,6 +313,7 @@ export async function JobListPage({
           isSupervisor={isSupervisor}
           showAssignmentAge={showAssignmentAge}
           showStateAge={showStateAge}
+          sortParams={filterParams.toString()}
           sortBy={sortBy ?? ""}
           sortDir={sortDir}
           jobs={jobs.map((j): JobRow => {
@@ -304,18 +328,28 @@ export async function JobListPage({
               bookkeepingBy: j.client.bookkeepingBy,
               jobName: j.jobName,
               departmentCode: j.finalDepartment.code,
-              departmentWarningCode: detectDepartmentMismatch(j.jobName, j.finalDepartment.code),
+              departmentWarningCode: detectDepartmentMismatch(j.jobName, j.finalDepartment.code, j.sourceManagerName),
               xpmState: j.xpmState,
               jobStateNumber: j.jobStateNumber,
               stateEnteredAt: j.stateEnteredAt,
               stateIdleAccumulatedMs: stateTime.accumulatedMs,
               stateIdleActiveEnteredAt: stateTime.activeEnteredAt,
               assignments: j.assignments,
+              canInteract: canInteractWithJob(user, {
+                assignments: j.assignments.map((assignment) => ({
+                  userId: assignment.user.id,
+                  assignmentRole: assignment.assignmentRole,
+                })),
+                finalDepartmentId: j.finalDepartmentId,
+                sourceManagerName: j.sourceManagerName,
+                jobStateNumber: j.jobStateNumber,
+                xpmState: j.xpmState,
+                archived: j.archived,
+              }),
             };
           })}
-          crossRoleStaffUsers={crossRoleStaffUsers}
           managerUsers={managerUsers}
-          staffBySupervisorId={Object.fromEntries(staffBySupId)}
+          staffUsers={staffUsers}
           supervisorUsers={supervisorUsers}
           userWorkload={userWorkload}
         />

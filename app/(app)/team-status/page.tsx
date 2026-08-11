@@ -12,8 +12,11 @@ import { formatDateTime, formatElapsedTime } from "@/lib/utils";
 export default async function TeamStatusPage() {
   const user = await requireRole(["ADMIN", "MANAGER", "SUPERVISOR"]);
 
-  const where: Prisma.UserWhereInput =
-    user.role === "SUPERVISOR" ? { active: true, supervisorId: user.id } : { active: true };
+  const where: Prisma.UserWhereInput = user.role === "SUPERVISOR"
+    ? { active: true, OR: [{ id: user.id }, { supervisorId: user.id }] }
+    : user.role === "MANAGER" && user.departmentCode !== "QC"
+      ? { active: true, departmentId: user.departmentId ?? "__no_department__" }
+      : { active: true };
 
   const users = await prisma.user.findMany({
     where,

@@ -1,13 +1,17 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toggleJobAssignmentAction } from "@/app/(app)/jobs/actions";
+import { useClientCategoryConfirm } from "@/components/client-category-confirm-dialog";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { isIrfanSourcePerson, isTaahaSourcePerson } from "@/lib/import/department";
 
 type AssignmentRole = "MANAGER" | "SUPERVISOR" | "STAFF";
 type UserRole = "ADMIN" | "MANAGER" | "SUPERVISOR" | "STAFF";
-type RoleUser = { id: string; name: string | null; disabled?: boolean };
+type ClientCategory = "SOFTWARE" | "MANUAL";
+type RoleUser = { id: string; name: string | null; supervisorId?: string | null; disabled?: boolean };
 type Assignment = {
   id: string;
   assignmentRole: string;
@@ -26,39 +30,42 @@ export function AssignSingleJobModal({
   open,
   onClose,
   onAssignmentsChange,
+  onClientCategoryChange,
   job,
-  currentUserId,
   currentUserRole,
   managerUsers,
   supervisorUsers,
-  crossRoleStaffUsers,
-  staffBySupervisorId,
+  staffUsers,
   userWorkload,
 }: {
   open: boolean;
   onClose: () => void;
   onAssignmentsChange?: (assignments: Assignment[]) => void;
+  onClientCategoryChange?: (category: ClientCategory) => void;
   job: {
     id: string;
     jobIdFromExcel: string;
+    clientId: string;
     clientName: string;
+    clientCategory: ClientCategory | null;
     departmentCode: string;
     assignments: Assignment[];
   };
-  currentUserId: string;
   currentUserRole: UserRole;
   managerUsers: RoleUser[];
   supervisorUsers: RoleUser[];
-  crossRoleStaffUsers: RoleUser[];
-  staffBySupervisorId: Record<string, RoleUser[]>;
+  staffUsers: RoleUser[];
   userWorkload: Record<string, Record<string, number>>;
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const router = useRouter();
   const [assignments, setAssignments] = useState(job.assignments);
   const [savingKey, setSavingKey] = useState<string | null>(null);
+  const [clientCategory, setClientCategory] = useState(job.clientCategory);
+  const { confirm: confirmClientCategory, dialog: clientCategoryDialog } = useClientCategoryConfirm();
 
   useEffect(() => setAssignments(job.assignments), [job.id, job.assignments]);
+  useEffect(() => setClientCategory(job.clientCategory), [job.id, job.clientCategory]);
   useEffect(() => {
     const dialog = dialogRef.current;
     if (!dialog) return;
@@ -66,33 +73,36 @@ export function AssignSingleJobModal({
     if (!open && dialog.open) dialog.close();
   }, [open]);
 
-  const assignedSupervisorIds = assignments
-    .filter((assignment) => assignment.assignmentRole === "SUPERVISOR")
-    .map((assignment) => assignment.user.id);
-  const staffUsers = useMemo(() => {
-    const supervisorIds = currentUserRole === "SUPERVISOR" ? [currentUserId] : assignedSupervisorIds;
-    const unique = new Map<string, RoleUser>();
-    for (const supervisorId of supervisorIds) {
-      for (const staff of staffBySupervisorId[supervisorId] ?? []) unique.set(staff.id, staff);
-    }
-    for (const candidate of crossRoleStaffUsers) unique.set(candidate.id, candidate);
-    return [...unique.values()].sort((a, b) => (a.name ?? "").localeCompare(b.name ?? ""));
-  }, [assignedSupervisorIds.join(","), crossRoleStaffUsers, currentUserId, currentUserRole, staffBySupervisorId]);
-
   async function toggle(role: AssignmentRole, target: RoleUser, checked: boolean) {
     const key = `${role}:${target.id}`;
+
+    let confirmedCategory: ClientCategory | null = null;
+    if (role === "MANAGER" && checked && (isIrfanSourcePerson(target.name) || isTaahaSourcePerson(target.name))) {
+      const choice = await confirmClientCategory(target.name ?? "This manager", job.clientName);
+      if (!choice) return;
+      confirmedCategory = choice;
+    }
+
     setSavingKey(key);
-    const nextAssignments = checked
-      ? [...assignments, { id: `pending-${key}`, assignedAt: new Date(), assignmentRole: role, user: target }]
+    let nextAssignments = checked
+      ? [
+          ...assignments.filter((assignment) => role === "MANAGER" || assignment.assignmentRole !== role),
+          { id: `pending-${key}`, assignedAt: new Date(), assignmentRole: role, user: target },
+        ]
       : assignments.filter((assignment) => !(assignment.assignmentRole === role && assignment.user.id === target.id));
     setAssignments(nextAssignments);
     onAssignmentsChange?.(nextAssignments);
+    if (confirmedCategory) {
+      setClientCategory(confirmedCategory);
+      onClientCategoryChange?.(confirmedCategory);
+    }
 
     const formData = new FormData();
     formData.set("jobId", job.id);
     formData.set("userId", target.id);
     formData.set("assignmentRole", role);
     formData.set("assigned", String(checked));
+    if (confirmedCategory) formData.set("clientCategory", confirmedCategory);
     await toggleJobAssignmentAction(formData);
     setSavingKey(null);
     router.refresh();
@@ -111,23 +121,30 @@ export function AssignSingleJobModal({
       }
     }
     const candidates = [...visibleUsers.values()].sort((a, b) => (a.name ?? "").localeCompare(b.name ?? ""));
+    const exclusiveRoleOccupied = role !== "MANAGER" && roleAssignments.length > 0;
     return (
       <fieldset className="rounded-lg border p-3">
         <legend className="px-1 text-sm font-semibold capitalize">{role.toLowerCase()}s</legend>
         <div className="mt-1 max-h-40 space-y-1 overflow-y-auto">
           {candidates.length ? candidates.map((candidate) => {
             const key = `${role}:${candidate.id}`;
+            const assigned = assignedIds.has(candidate.id);
+            const blockedByExclusiveAssignment = exclusiveRoleOccupied && !assigned;
             return (
               <label
-                className={candidate.disabled
+                className={candidate.disabled || blockedByExclusiveAssignment
                   ? "flex items-center gap-2 rounded px-2 py-1.5 text-sm text-muted-foreground"
                   : "flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-muted"}
                 key={candidate.id}
-                title={candidate.disabled ? "Only an administrator can change this assignment." : undefined}
+                title={candidate.disabled
+                  ? "Only an administrator can change this assignment."
+                  : blockedByExclusiveAssignment
+                    ? `Remove the current ${role.toLowerCase()} before assigning another.`
+                    : undefined}
               >
                 <input
-                  checked={assignedIds.has(candidate.id)}
-                  disabled={candidate.disabled || savingKey === key}
+                  checked={assigned}
+                  disabled={candidate.disabled || blockedByExclusiveAssignment || savingKey === key}
                   onChange={(event) => void toggle(role, candidate, event.target.checked)}
                   type="checkbox"
                 />
@@ -143,31 +160,36 @@ export function AssignSingleJobModal({
   }
 
   return (
-    <dialog
-      className="w-full max-w-lg rounded-xl border bg-background p-0 shadow-xl backdrop:bg-black/40"
-      onClick={(event) => { if (event.target === dialogRef.current) onClose(); }}
-      ref={dialogRef}
-    >
+    <>
+      {clientCategoryDialog}
+      <dialog
+        className="w-full max-w-lg rounded-xl border bg-background p-0 shadow-xl backdrop:bg-black/40"
+        onClick={(event) => { if (event.target === dialogRef.current) onClose(); }}
+        ref={dialogRef}
+      >
       <div className="space-y-5 p-6">
         <div>
-          <h2 className="text-lg font-semibold">Assign Multiple Users</h2>
+          <h2 className="text-lg font-semibold">Assign Users</h2>
           <p className="mt-1 text-sm text-muted-foreground">{job.jobIdFromExcel} — {job.clientName}</p>
-          <span className="mt-1 inline-block rounded-full bg-muted px-2 py-0.5 text-xs font-medium">{job.departmentCode}</span>
+          <div className="mt-1 flex flex-wrap items-center gap-1.5">
+            <span className="inline-block rounded-full bg-muted px-2 py-0.5 text-xs font-medium">{job.departmentCode}</span>
+            {clientCategory === "SOFTWARE" ? <Badge variant="softwareBk">Software Client</Badge> : null}
+          </div>
         </div>
 
         <div className="space-y-3">
           {currentUserRole !== "SUPERVISOR" ? <RoleChecklist role="MANAGER" users={managerUsers} /> : null}
           <RoleChecklist role="SUPERVISOR" users={supervisorUsers} />
           <RoleChecklist role="STAFF" users={staffUsers} />
-          {currentUserRole !== "SUPERVISOR" && assignedSupervisorIds.length === 0 && crossRoleStaffUsers.length === 0 ? (
-            <p className="text-xs text-muted-foreground">Assign at least one supervisor to select staff from their teams.</p>
-          ) : null}
+          <p className="text-xs text-muted-foreground">A job can have multiple managers, but only one supervisor and one staff member.</p>
+          <p className="text-xs text-muted-foreground">Staff and supervisor assignments are managed independently.</p>
         </div>
 
         <div className="flex justify-end">
           <Button onClick={onClose} type="button" variant="outline">Close</Button>
         </div>
       </div>
-    </dialog>
+      </dialog>
+    </>
   );
 }

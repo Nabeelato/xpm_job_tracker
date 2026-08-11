@@ -4,6 +4,7 @@ export type AssignmentPermissionUser = {
   id: string;
   role: UserRole;
   departmentId?: string | null;
+  departmentCode?: string | null;
   supervisorId?: string | null;
 };
 
@@ -11,10 +12,6 @@ export type ActiveAssignmentRef = {
   userId: string;
   assignmentRole: AssignmentRole;
 };
-
-export function isElevatedRole(role: UserRole) {
-  return role === "ADMIN" || role === "MANAGER" || role === "SUPERVISOR";
-}
 
 function isNativeRoleMatch(assignee: AssignmentPermissionUser, assignmentRole: AssignmentRole) {
   if (assignmentRole === "MANAGER") {
@@ -30,23 +27,18 @@ export function canAssignUserToRole(
   assignmentRole: AssignmentRole,
 ) {
   if (actor.role === "ADMIN") {
-    if (assignmentRole === "MANAGER") return isNativeRoleMatch(assignee, assignmentRole);
-    if (assignmentRole === "SUPERVISOR") return isElevatedRole(assignee.role);
-    return true;
+    return isNativeRoleMatch(assignee, assignmentRole);
   }
 
   if (actor.role === "MANAGER") {
-    if (!actor.departmentId || assignee.departmentId !== actor.departmentId) return false;
-    if (actor.id === assignee.id && (assignmentRole === "SUPERVISOR" || assignmentRole === "STAFF")) {
-      return true;
+    const hasGlobalAssignmentScope = actor.departmentCode === "QC";
+    if (!hasGlobalAssignmentScope && (!actor.departmentId || assignee.departmentId !== actor.departmentId)) {
+      return false;
     }
     return isNativeRoleMatch(assignee, assignmentRole);
   }
 
   if (actor.role === "SUPERVISOR") {
-    if (actor.id === assignee.id && (assignmentRole === "SUPERVISOR" || assignmentRole === "STAFF")) {
-      return true;
-    }
     return assignmentRole === "STAFF" && assignee.role === "STAFF" && assignee.supervisorId === actor.id;
   }
 
@@ -71,13 +63,12 @@ export function canManageJobAssignmentRole({
   }
 
   if (actor.role === "MANAGER") {
+    const hasGlobalAssignmentScope = actor.departmentCode === "QC";
     const ownsJob = activeAssignments.some((assignment) => assignment.userId === actor.id);
-    return ownsJob && canAssignUserToRole(actor, assignee, assignmentRole);
+    return (hasGlobalAssignmentScope || ownsJob) && canAssignUserToRole(actor, assignee, assignmentRole);
   }
 
   if (actor.role === "SUPERVISOR") {
-    if (actor.id === assignee.id && assignmentRole === "SUPERVISOR") return true;
-
     const supervisesJob = activeAssignments.some(
       (assignment) => assignment.userId === actor.id && assignment.assignmentRole === "SUPERVISOR",
     );
