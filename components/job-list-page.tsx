@@ -97,7 +97,9 @@ export async function JobListPage({
   const filterParams = paramsWithPreset(pageParams, effectivePreset);
   const sortBy = searchParam(rawParams, "sortBy");
   const sortDir = (searchParam(rawParams, "sortDir") ?? "asc") as "asc" | "desc";
-  const dataScope = effectivePreset.allJobs || effectivePreset.myJobs ? "all" : "visible";
+  const dataScope = effectivePreset.allJobs || effectivePreset.myJobs || effectivePreset.availableJobs
+    ? "all"
+    : "visible";
   const where = buildJobReportWhere(filterParams, user, { scope: dataScope });
 
   const [showAssignmentAge, showStateAge] = await Promise.all([
