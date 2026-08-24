@@ -4,6 +4,7 @@ import type { AppSessionUser } from "@/lib/rbac";
 import {
   availableJobsWhere,
   canInteractWithJob,
+  canUpdateStaffJob,
   visibleAvailableQueueJobsWhere,
   visibleJobsWhere,
 } from "@/lib/rbac";
@@ -82,6 +83,21 @@ test("managers retain access to jobs they claim outside their department", () =>
     jobStateNumber: 4,
     archived: false,
   }), true);
+});
+
+test("only the actively assigned staff member can submit a staff job update", () => {
+  const assignedStaff = user({ id: "staff-1", role: "STAFF" });
+  const job = {
+    assignments: [
+      { userId: "staff-1", assignmentRole: "STAFF" as const },
+      { userId: "supervisor-1", assignmentRole: "SUPERVISOR" as const },
+    ],
+  };
+
+  assert.equal(canUpdateStaffJob(assignedStaff, job), true);
+  assert.equal(canUpdateStaffJob(user({ id: "staff-2", role: "STAFF" }), job), false);
+  assert.equal(canUpdateStaffJob(user({ id: "supervisor-1", role: "SUPERVISOR" }), job), false);
+  assert.equal(canUpdateStaffJob(user({ id: "admin-1", role: "ADMIN" }), job), false);
 });
 
 test("Faizan sees only jobs attributed to him by XPM", () => {

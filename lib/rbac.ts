@@ -155,6 +155,12 @@ type InteractiveJob = {
   archived?: boolean;
 };
 
+export function canUpdateStaffJob(user: AppSessionUser, job: InteractiveJob) {
+  return user.role === "STAFF" && job.assignments.some(
+    (assignment) => assignment.userId === user.id && assignment.assignmentRole === AssignmentRole.STAFF,
+  );
+}
+
 export function canInteractWithJob(user: AppSessionUser, job: InteractiveJob) {
   if (user.role === "ADMIN" || user.departmentCode === "QC") return true;
   if (isXpmOnlyJobViewer(user)) {

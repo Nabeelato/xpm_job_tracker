@@ -117,6 +117,9 @@ export async function GET(req: NextRequest) {
         select: {
           assignmentRole: true,
           assignedAt: true,
+          staffStatus: true,
+          staffComment: true,
+          staffStatusUpdatedAt: true,
           user: { select: { name: true } },
         },
         orderBy: { assignedAt: "desc" },
@@ -174,6 +177,9 @@ export async function GET(req: NextRequest) {
       { header: "Manager", key: "manager", width: 22 },
       { header: "Supervisor", key: "supervisor", width: 22 },
       { header: "Staff", key: "staff", width: 22 },
+      { header: "Staff Status", key: "staffStatus", width: 16 },
+      { header: "Staff Comment", key: "staffComment", width: 48 },
+      { header: "Staff Updated At", key: "staffUpdatedAt", width: 22 },
       { header: "Source Manager", key: "sourceManager", width: 22 },
       { header: "Source Partner", key: "sourcePartner", width: 22 },
       { header: "Internal Status", key: "internalStatus", width: 22 },
@@ -185,6 +191,7 @@ export async function GET(req: NextRequest) {
       { header: "Updated At", key: "updatedAt", width: 22 },
     ],
     jobs.map((job) => {
+      const staffAssignment = job.assignments.find((assignment) => assignment.assignmentRole === "STAFF");
       const stateTime = summarizeJobStateTime(job.stateTimeRecords, job.jobStateNumber);
       const activeElapsedMs = stateTime.activeEnteredAt
         ? Math.max(0, Date.now() - stateTime.activeEnteredAt.getTime())
@@ -207,6 +214,9 @@ export async function GET(req: NextRequest) {
         manager: assignmentNames(job.assignments, "MANAGER"),
         supervisor: assignmentNames(job.assignments, "SUPERVISOR"),
         staff: assignmentNames(job.assignments, "STAFF"),
+        staffStatus: staffAssignment?.staffStatus ? titleCaseEnum(staffAssignment.staffStatus) : "",
+        staffComment: staffAssignment?.staffComment ?? "",
+        staffUpdatedAt: formatDateTime(staffAssignment?.staffStatusUpdatedAt),
         sourceManager: job.sourceManagerName ?? "",
         sourcePartner: job.sourcePartnerName ?? "",
         internalStatus: titleCaseEnum(job.internalStatus),

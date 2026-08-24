@@ -4,6 +4,7 @@ import { AssignManagerInlineForm } from "@/components/assign-manager-inline-form
 import { DepartmentBadge } from "@/components/department-badge";
 import { JobStateIdleTime } from "@/components/job-idle-time";
 import { PageHeader } from "@/components/page-header";
+import { StaffJobUpdateForm } from "@/components/staff-job-update-form";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -22,7 +23,7 @@ import { canAssignUserToRole, canManageJobAssignmentRole } from "@/lib/assignmen
 import { prisma } from "@/lib/db";
 import { detectDepartmentMismatch } from "@/lib/import/department";
 import { summarizeJobStateTime } from "@/lib/job-state";
-import { canArchiveJobs, canAssignJobs, canInteractWithJob, requireUser } from "@/lib/rbac";
+import { canArchiveJobs, canAssignJobs, canInteractWithJob, canUpdateStaffJob, requireUser } from "@/lib/rbac";
 import { formatDateTime, formatElapsedTime, titleCaseEnum } from "@/lib/utils";
 import { updateClientBookkeepingAction } from "@/app/(app)/clients/actions";
 import {
@@ -73,6 +74,9 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
           assignmentRole: true,
           assignmentSource: true,
           assignedAt: true,
+          staffStatus: true,
+          staffComment: true,
+          staffStatusUpdatedAt: true,
           user: { select: { id: true, name: true, role: true, departmentId: true, supervisorId: true } },
         },
         orderBy: { assignedAt: "desc" },
@@ -114,6 +118,8 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
     archived: job.archived,
   };
   const canInteract = canInteractWithJob(user, accessJob);
+  const canUpdateStaff = canUpdateStaffJob(user, accessJob);
+  const staffAssignment = job.assignments.find((assignment) => assignment.assignmentRole === "STAFF");
   const departmentWarningCode = detectDepartmentMismatch(job.jobName, job.finalDepartment.code, job.sourceManagerName);
 
   const [departments, users] = await Promise.all([
@@ -321,6 +327,48 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
         </div>
 
         <div className="space-y-5">
+          {staffAssignment || user.role !== "STAFF" ? (
+            <Card>
+              <CardHeader>
+                <CardTitle>Staff Update</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3 text-sm">
+                {staffAssignment ? (
+                  <>
+                    <div className="flex flex-wrap items-center gap-2">
+                      {staffAssignment.staffStatus === "DONE" ? (
+                        <Badge variant="success">Done</Badge>
+                      ) : (
+                        <Badge variant="secondary">Not done</Badge>
+                      )}
+                      <span className="text-muted-foreground">{staffAssignment.user.name}</span>
+                    </div>
+                    <div>
+                      <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Staff comment</div>
+                      <p className="mt-1 whitespace-pre-wrap break-words">
+                        {staffAssignment.staffComment ?? "No staff comment yet."}
+                      </p>
+                    </div>
+                    {staffAssignment.staffStatusUpdatedAt ? (
+                      <p className="text-xs text-muted-foreground">
+                        Updated {formatDateTime(staffAssignment.staffStatusUpdatedAt)}
+                      </p>
+                    ) : null}
+                    {canUpdateStaff ? (
+                      <StaffJobUpdateForm
+                        initialComment={staffAssignment.staffComment}
+                        initialStatus={staffAssignment.staffStatus}
+                        jobId={job.id}
+                      />
+                    ) : null}
+                  </>
+                ) : (
+                  <p className="text-muted-foreground">No active staff assignment.</p>
+                )}
+              </CardContent>
+            </Card>
+          ) : null}
+
           {canInteract ? (
             <Card>
               <CardHeader>

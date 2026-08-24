@@ -36,6 +36,10 @@ enum AssignmentSource {
   DEPARTMENT_AUTO
 }
 
+enum StaffJobStatus {
+  DONE
+}
+
 enum ClientCategory {
   SOFTWARE
   MANUAL
@@ -267,6 +271,9 @@ model JobAssignment {
   assignedBy       User?          @relation("AssignedBy", fields: [assignedById], references: [id])
   assignedAt       DateTime       @default(now()) @map("assigned_at")
   active           Boolean        @default(true)
+  staffStatus      StaffJobStatus? @map("staff_status")
+  staffComment     String?         @map("staff_comment")
+  staffStatusUpdatedAt DateTime?   @map("staff_status_updated_at")
   createdAt        DateTime       @default(now()) @map("created_at")
   updatedAt        DateTime       @updatedAt @map("updated_at")
 
@@ -274,6 +281,7 @@ model JobAssignment {
   @@index([userId])
   @@index([assignedById])
   @@index([assignmentSource])
+  @@index([staffStatus])
   @@index([jobId, active])
   @@index([userId, active, jobId])
   @@map("job_assignments")
