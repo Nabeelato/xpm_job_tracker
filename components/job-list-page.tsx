@@ -69,6 +69,7 @@ export async function JobListPage({
   const user = await requireUser();
   const rawParams = (await searchParams) ?? {};
   const params = toSearchParams(rawParams);
+  params.delete("bookkeepingFrequency");
 
   const effectivePreset: Preset = preset;
   const effectiveTitle = title ?? "";
@@ -96,7 +97,9 @@ export async function JobListPage({
   const filterParams = paramsWithPreset(pageParams, effectivePreset);
   const sortBy = searchParam(rawParams, "sortBy");
   const sortDir = (searchParam(rawParams, "sortDir") ?? "asc") as "asc" | "desc";
-  const dataScope = effectivePreset.allJobs || effectivePreset.myJobs ? "all" : "visible";
+  const dataScope = effectivePreset.allJobs || effectivePreset.myJobs || effectivePreset.availableJobs
+    ? "all"
+    : "visible";
   const where = buildJobReportWhere(filterParams, user, { scope: dataScope });
 
   const [showAssignmentAge, showStateAge] = await Promise.all([
@@ -123,15 +126,25 @@ export async function JobListPage({
           where: { stateNumber: { gte: 1, lte: 6 } },
           select: { stateNumber: true, enteredAt: true, exitedAt: true },
         },
-        client: { select: { displayName: true, category: true, bookkeepingSoftware: true, bookkeepingBy: true } },
+        client: {
+          select: {
+            displayName: true,
+            category: true,
+            bookkeepingSoftware: true,
+            bookkeepingBy: true,
+          },
+        },
         finalDepartment: { select: { code: true } },
         assignments: {
           where: { active: true },
           select: {
             id: true,
-            assignmentRole: true,
-            assignedAt: true,
-            user: { select: { id: true, name: true } },
+             assignmentRole: true,
+             assignedAt: true,
+             staffStatus: true,
+             staffComment: true,
+             staffStatusUpdatedAt: true,
+             user: { select: { id: true, name: true } },
           },
           orderBy: { assignedAt: "desc" },
         },

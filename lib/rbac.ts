@@ -99,12 +99,6 @@ function availableQueueBaseRules(): Prisma.JobWhereInput[] {
   return [
     workflowStateWhere(),
     { archived: false },
-    {
-      OR: [
-        { finalDepartment: { code: { not: "SOFTWARE_BK" } } },
-        { assignments: { none: { active: true, assignmentRole: AssignmentRole.SUPERVISOR } } },
-      ],
-    },
   ];
 }
 
@@ -121,27 +115,24 @@ export function availableJobsWhere(user: AppSessionUser): Prisma.JobWhereInput {
 
   if (isXpmOnlyJobViewer(user)) {
     rules.push(xpmSourceManagerJobsWhere(user));
-  } else if (user.departmentCode !== "QC") {
-    if (!user.departmentId) return { id: "__no_department__" };
-    rules.push({ finalDepartmentId: user.departmentId });
   }
 
   return { AND: rules };
 }
 
-export function visibleAvailableQueueJobsWhere(user: AppSessionUser): Prisma.JobWhereInput {
-  if (user.role === "ADMIN" || user.departmentCode === "QC") {
-    return { AND: availableQueueBaseRules() };
-  }
-
-  return availableJobsWhere(user);
+export function visibleAvailableQueueJobsWhere(_user: AppSessionUser): Prisma.JobWhereInput {
+  return { AND: availableQueueBaseRules() };
 }
 
 export function visibleJobsWhere(user: AppSessionUser): Prisma.JobWhereInput {
   if (user.role === "ADMIN" || user.departmentCode === "QC") return {};
   if (isXpmOnlyJobViewer(user)) return xpmSourceManagerJobsWhere(user);
   if (user.role === "MANAGER") {
-    return user.departmentId ? { finalDepartmentId: user.departmentId } : { id: "__no_department__" };
+    const visible: Prisma.JobWhereInput[] = [
+      { assignments: { some: { userId: user.id, active: true } } },
+    ];
+    if (user.departmentId) visible.push({ finalDepartmentId: user.departmentId });
+    return { OR: visible };
   }
   return {
     OR: [
@@ -163,6 +154,12 @@ type InteractiveJob = {
   xpmState?: string | null;
   archived?: boolean;
 };
+
+export function canUpdateStaffJob(user: AppSessionUser, job: InteractiveJob) {
+  return user.role === "STAFF" && job.assignments.some(
+    (assignment) => assignment.userId === user.id && assignment.assignmentRole === AssignmentRole.STAFF,
+  );
+}
 
 export function canInteractWithJob(user: AppSessionUser, job: InteractiveJob) {
   if (user.role === "ADMIN" || user.departmentCode === "QC") return true;

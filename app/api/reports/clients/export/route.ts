@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   bookkeepingByLabels,
+  bookkeepingFrequencyLabels,
   bookkeepingSoftwareLabels,
   clientCategoryLabels,
   departmentNames,
@@ -27,6 +28,7 @@ export async function GET(req: NextRequest) {
     filter: params.get("filter"),
     bookkeepingSoftware: params.get("bookkeepingSoftware"),
     bookkeepingBy: params.get("bookkeepingBy"),
+    bookkeepingFrequency: params.get("bookkeepingFrequency"),
     scope,
     page: 1,
     pageSize: REPORT_EXPORT_LIMIT,
@@ -43,6 +45,16 @@ export async function GET(req: NextRequest) {
       { label: "Client Filter", value: params.get("filter") },
       { label: "Bookkeeping Software", value: params.get("bookkeepingSoftware") },
       { label: "Bookkeeping By", value: params.get("bookkeepingBy") },
+      {
+        label: "Software BK Cycle",
+        value: (() => {
+          const frequency = params.get("bookkeepingFrequency");
+          if (frequency === "MONTHLY") return bookkeepingFrequencyLabels.MONTHLY;
+          if (frequency === "QUARTERLY") return bookkeepingFrequencyLabels.QUARTERLY;
+          if (frequency === "unclassified") return "Unclassified";
+          return frequency;
+        })(),
+      },
       { label: "Rows", value: total },
     ],
   });
@@ -55,6 +67,7 @@ export async function GET(req: NextRequest) {
       { header: "Category", key: "category", width: 18 },
       { header: "Bookkeeping Software", key: "bookkeepingSoftware", width: 22 },
       { header: "Bookkeeping By", key: "bookkeepingBy", width: 18 },
+      { header: "Software BK Cycle", key: "bookkeepingFrequency", width: 20 },
       { header: "Total Jobs", key: "totalJobs", width: 12 },
       { header: "Active Jobs", key: "activeJobs", width: 12 },
       { header: "Completed Jobs", key: "completedJobs", width: 16 },
@@ -73,6 +86,9 @@ export async function GET(req: NextRequest) {
         ? bookkeepingSoftwareLabels[client.bookkeepingSoftware]
         : "",
       bookkeepingBy: client.bookkeepingBy ? bookkeepingByLabels[client.bookkeepingBy] : "",
+      bookkeepingFrequency: client.bookkeepingFrequency
+        ? bookkeepingFrequencyLabels[client.bookkeepingFrequency]
+        : "",
       totalJobs: client.totalJobs,
       activeJobs: client.activeJobs,
       completedJobs: client.completedJobs,

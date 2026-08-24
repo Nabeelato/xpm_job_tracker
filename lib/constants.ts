@@ -1,4 +1,12 @@
-import type { AssignmentRole, BookkeepingBy, BookkeepingSoftware, ClientCategory, InternalStatus, UserRole } from "@prisma/client";
+import type {
+  AssignmentRole,
+  BookkeepingBy,
+  BookkeepingFrequency,
+  BookkeepingSoftware,
+  ClientCategory,
+  InternalStatus,
+  UserRole,
+} from "@prisma/client";
 
 export const requiredUploadHeaders = ["[Job] Job No.", "[Client] Client", "[Job] Name"] as const;
 
@@ -73,6 +81,13 @@ export const bookkeepingSoftwareLabels: Record<BookkeepingSoftware, string> = {
 export const bookkeepingByLabels: Record<BookkeepingBy, string> = {
   FIRM: "Firm",
   CLIENT: "Client",
+};
+
+export const bookkeepingFrequencies: BookkeepingFrequency[] = ["MONTHLY", "QUARTERLY"];
+
+export const bookkeepingFrequencyLabels: Record<BookkeepingFrequency, string> = {
+  MONTHLY: "Monthly",
+  QUARTERLY: "Quarterly",
 };
 
 export const maxUploadSizeBytes = 15 * 1024 * 1024;

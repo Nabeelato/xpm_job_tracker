@@ -466,7 +466,6 @@ export function JobFilters({
     ],
     [],
   );
-
   const query = getValues(pillParams, "q")[0] ?? "";
   const stateFilters = selectedStateFilters(searchParams);
   const activeStateFilters = selectedStateFilters(pillParams);

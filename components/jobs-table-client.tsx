@@ -11,11 +11,16 @@ import { isTimedJobState, isWorkflowJobState } from "@/lib/job-state";
 import { AssignJobsModal } from "@/components/assign-jobs-modal";
 import { AssignSingleJobModal } from "@/components/assign-single-job-modal";
 import { DepartmentBadge } from "@/components/department-badge";
+import { StaffJobUpdateForm } from "@/components/staff-job-update-form";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { cn, formatDateTime, formatElapsedMilliseconds, titleCaseEnum } from "@/lib/utils";
-import { bulkOwnJobsAction, claimJobAction, releaseOwnJobAction } from "@/app/(app)/jobs/actions";
+import {
+  bulkOwnJobsAction,
+  claimJobAction,
+  releaseOwnJobAction,
+} from "@/app/(app)/jobs/actions";
 
 type RoleUser = { id: string; name: string | null; supervisorId?: string | null };
 
@@ -23,6 +28,9 @@ type Assignment = {
   id: string;
   assignmentRole: string;
   assignedAt: Date;
+  staffStatus?: "DONE" | null;
+  staffComment?: string | null;
+  staffStatusUpdatedAt?: Date | null;
   user: { id: string; name: string | null };
 };
 
@@ -265,6 +273,8 @@ export function JobsTableClient({
               <TableHead>Manager</TableHead>
               <TableHead>Supervisor</TableHead>
               <TableHead>Staff</TableHead>
+              <TableHead>Staff Status</TableHead>
+              <TableHead>Staff Comment</TableHead>
               <TableHead />
               {isMyJobs && (currentUserRole === "MANAGER" || currentUserRole === "SUPERVISOR") ? <TableHead /> : null}
               {showAssignmentAge ? <TableHead>Assigned Since</TableHead> : null}
@@ -279,6 +289,8 @@ export function JobsTableClient({
               const manager = roleNames("MANAGER");
               const supervisor = roleNames("SUPERVISOR");
               const staff = roleNames("STAFF");
+              const staffAssignment = job.assignments.find((assignment) => assignment.assignmentRole === "STAFF");
+              const canUpdateStaff = currentUserRole === "STAFF" && staffAssignment?.user.id === currentUserId;
               const claimRole = currentUserRole === "STAFF" ? "STAFF" :
                 currentUserRole === "SUPERVISOR" ? "SUPERVISOR" : "MANAGER";
               const isClaimable = isAvailableQueue && currentUserRole !== "ADMIN" &&
@@ -393,6 +405,45 @@ export function JobsTableClient({
                     <span className={staff ? "text-sm" : "text-sm text-muted-foreground"}>
                       {staff || "—"}
                     </span>
+                  </TableCell>
+                  <TableCell className="min-w-[140px]">
+                    <div className="space-y-2">
+                      {staffAssignment ? (
+                        staffAssignment.staffStatus === "DONE" ? <Badge variant="success">Done</Badge> : <span className="text-sm text-muted-foreground">Not done</span>
+                      ) : <span className="text-sm text-muted-foreground">—</span>}
+                      {staffAssignment?.staffStatusUpdatedAt ? (
+                        <time
+                          className="block whitespace-nowrap text-xs text-muted-foreground"
+                          dateTime={staffAssignment.staffStatusUpdatedAt.toISOString()}
+                          title={formatDateTime(staffAssignment.staffStatusUpdatedAt)}
+                        >
+                          {formatDistanceToNowStrict(staffAssignment.staffStatusUpdatedAt, { addSuffix: true })}
+                        </time>
+                      ) : null}
+                      {canUpdateStaff && staffAssignment ? (
+                        <StaffJobUpdateForm
+                          initialComment={staffAssignment.staffComment ?? null}
+                          initialStatus={staffAssignment.staffStatus ?? null}
+                          jobId={job.id}
+                          onSaved={(value) => setDisplayedJobs((current) => current.map((item) => item.id === job.id ? {
+                            ...item,
+                            assignments: item.assignments.map((assignment) => assignment.id === staffAssignment.id ? {
+                              ...assignment,
+                              staffStatus: value.status,
+                              staffComment: value.comment,
+                              staffStatusUpdatedAt: value.updatedAt,
+                            } : assignment),
+                          } : item))}
+                        />
+                      ) : null}
+                    </div>
+                  </TableCell>
+                  <TableCell className="min-w-[220px] max-w-sm">
+                    {staffAssignment?.staffComment ? (
+                      <p className="whitespace-pre-wrap break-words text-sm" title={staffAssignment.staffComment}>
+                        {staffAssignment.staffComment}
+                      </p>
+                    ) : <span className="text-sm text-muted-foreground">—</span>}
                   </TableCell>
                   {isClaimable ? (
                     <TableCell>

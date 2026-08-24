@@ -10,6 +10,7 @@ import {
   ClientCategory,
   InternalStatus,
   NotificationType,
+  StaffJobStatus,
   type Prisma,
 } from "@prisma/client";
 import { prisma } from "@/lib/db";
@@ -109,6 +110,136 @@ export async function updateInternalStatusAction(formData: FormData) {
   revalidatePath(`/jobs/${job.id}`);
   revalidatePath("/jobs");
   revalidateAllJobViews();
+}
+
+export async function updateStaffJobAction(formData: FormData) {
+  const user = await requireUser();
+  const jobId = String(formData.get("jobId") ?? "");
+  const rawStatus = String(formData.get("staffStatus") ?? "");
+  const staffComment = String(formData.get("staffComment") ?? "").trim() || null;
+
+  if (user.role !== "STAFF") {
+    return { ok: false as const, error: "Only staff can submit a staff job update." };
+  }
+  if (!jobId || (rawStatus !== "" && rawStatus !== StaffJobStatus.DONE)) {
+    return { ok: false as const, error: "Choose a valid staff status." };
+  }
+  if (staffComment && staffComment.length > 2000) {
+    return { ok: false as const, error: "The staff comment must be 2,000 characters or fewer." };
+  }
+
+  const staffStatus = rawStatus === StaffJobStatus.DONE ? StaffJobStatus.DONE : null;
+  const result = await prisma.$transaction(async (tx) => {
+    const assignment = await tx.jobAssignment.findFirst({
+      where: {
+        jobId,
+        userId: user.id,
+        assignmentRole: AssignmentRole.STAFF,
+        active: true,
+      },
+      select: {
+        id: true,
+        staffStatus: true,
+        staffComment: true,
+        staffStatusUpdatedAt: true,
+        job: {
+          select: {
+            id: true,
+            jobIdFromExcel: true,
+            jobName: true,
+            client: { select: { displayName: true } },
+            assignments: {
+              where: {
+                active: true,
+                assignmentRole: { in: [AssignmentRole.MANAGER, AssignmentRole.SUPERVISOR] },
+              },
+              select: { userId: true },
+            },
+          },
+        },
+      },
+    });
+    if (!assignment) return null;
+
+    const statusChanged = assignment.staffStatus !== staffStatus;
+    const commentChanged = assignment.staffComment !== staffComment;
+    if (!statusChanged && !commentChanged) {
+      return {
+        status: assignment.staffStatus,
+        comment: assignment.staffComment,
+        updatedAt: assignment.staffStatusUpdatedAt,
+      };
+    }
+
+    const updatedAt = new Date();
+    await tx.jobAssignment.update({
+      where: { id: assignment.id },
+      data: {
+        staffStatus,
+        staffComment,
+        staffStatusUpdatedAt: updatedAt,
+      },
+    });
+
+    if (statusChanged) {
+      await tx.jobChangeLog.create({
+        data: {
+          jobId: assignment.job.id,
+          changedById: user.id,
+          changeSource: ChangeSource.USER,
+          fieldName: "staff_status",
+          oldValue: assignment.staffStatus,
+          newValue: staffStatus,
+        },
+      });
+    }
+    if (commentChanged) {
+      await tx.jobChangeLog.create({
+        data: {
+          jobId: assignment.job.id,
+          changedById: user.id,
+          changeSource: ChangeSource.USER,
+          fieldName: "staff_comment",
+          oldValue: assignment.staffComment,
+          newValue: staffComment,
+        },
+      });
+    }
+
+    const admins = await tx.user.findMany({
+      where: { role: "ADMIN", active: true },
+      select: { id: true },
+    });
+    const recipientIds = new Set([
+      ...assignment.job.assignments.map((item) => item.userId),
+      ...admins.map((admin) => admin.id),
+    ]);
+    recipientIds.delete(user.id);
+
+    const title = staffStatus === StaffJobStatus.DONE ? "Staff marked job done" : "Staff job update changed";
+    for (const recipientId of recipientIds) {
+      await createNotification(tx, {
+        recipientId,
+        actorId: user.id,
+        type: NotificationType.COMMENT,
+        title,
+        body: `${user.name ?? "A staff member"} updated ${jobNotificationLabel(assignment.job)}${staffComment ? " with a staff comment" : ""}.`,
+        href: `/jobs/${assignment.job.id}`,
+        jobId: assignment.job.id,
+      });
+    }
+
+    return { status: staffStatus, comment: staffComment, updatedAt };
+  });
+
+  if (!result) {
+    return { ok: false as const, error: "This job is not actively assigned to you as staff." };
+  }
+
+  revalidatePath(`/jobs/${jobId}`);
+  revalidatePath("/jobs/my");
+  revalidateAllJobViews();
+  return { ok: true as const, ...result };
 }
 
 export async function updateDepartmentAction(formData: FormData) {

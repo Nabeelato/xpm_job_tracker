@@ -1,4 +1,10 @@
-import { Prisma, type BookkeepingBy, type BookkeepingSoftware, type ClientCategory } from "@prisma/client";
+import {
+  Prisma,
+  type BookkeepingBy,
+  type BookkeepingFrequency,
+  type BookkeepingSoftware,
+  type ClientCategory,
+} from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { isXpmOnlyJobViewer, type AppSessionUser } from "@/lib/rbac";
 
@@ -41,6 +47,7 @@ export type ClientSummary = {
   category: ClientCategory | null;
   bookkeepingSoftware: BookkeepingSoftware | null;
   bookkeepingBy: BookkeepingBy | null;
+  bookkeepingFrequency: BookkeepingFrequency | null;
   totalJobs: number;
   activeJobs: number;
   completedJobs: number;
@@ -61,6 +68,7 @@ type ClientSummaryRow = {
   category: ClientCategory | null;
   bookkeepingSoftware: BookkeepingSoftware | null;
   bookkeepingBy: BookkeepingBy | null;
+  bookkeepingFrequency: BookkeepingFrequency | null;
   totalJobs: CountValue;
   activeJobs: CountValue;
   completedJobs: CountValue;
@@ -226,6 +234,7 @@ export async function getClientSummaries({
   filter,
   bookkeepingSoftware,
   bookkeepingBy,
+  bookkeepingFrequency,
   scope = "visible",
   page,
   pageSize,
@@ -235,6 +244,7 @@ export async function getClientSummaries({
   filter?: ClientFilter | string | null;
   bookkeepingSoftware?: BookkeepingSoftware | string | null;
   bookkeepingBy?: BookkeepingBy | string | null;
+  bookkeepingFrequency?: BookkeepingFrequency | "unclassified" | string | null;
   scope?: JobDataScope;
   page: number;
   pageSize: number;
@@ -250,6 +260,11 @@ export async function getClientSummaries({
   const bookkeepingBySql = bookkeepingBy
     ? Prisma.sql`AND c.bookkeeping_by::text = ${bookkeepingBy}`
     : Prisma.empty;
+  const bookkeepingFrequencySql = bookkeepingFrequency === "unclassified"
+    ? Prisma.sql`AND c.category = 'SOFTWARE' AND c.bookkeeping_frequency IS NULL`
+    : bookkeepingFrequency
+      ? Prisma.sql`AND c.category = 'SOFTWARE' AND c.bookkeeping_frequency::text = ${bookkeepingFrequency}`
+      : Prisma.empty;
   const filterSql = clientFilterSql(filter);
 
   const rows = await prisma.$queryRaw<ClientSummaryRow[]>(Prisma.sql`
@@ -260,6 +275,7 @@ export async function getClientSummaries({
         c.category,
         c.bookkeeping_software,
         c.bookkeeping_by,
+        c.bookkeeping_frequency,
         j.archived,
         j.internal_status::text AS internal_status,
         j.missing_from_latest_import,
@@ -274,6 +290,7 @@ export async function getClientSummaries({
       ${searchSql}
       ${bookkeepingSoftwareSql}
       ${bookkeepingBySql}
+      ${bookkeepingFrequencySql}
     ),
     client_summaries AS (
       SELECT
@@ -282,6 +299,7 @@ export async function getClientSummaries({
         category,
         bookkeeping_software AS "bookkeepingSoftware",
         bookkeeping_by AS "bookkeepingBy",
+        bookkeeping_frequency AS "bookkeepingFrequency",
         COUNT(*)::int AS "totalJobs",
         (COUNT(*) FILTER (WHERE archived = FALSE))::int AS "activeJobs",
         (COUNT(*) FILTER (WHERE internal_status = 'COMPLETED'))::int AS "completedJobs",
@@ -293,7 +311,7 @@ export async function getClientSummaries({
         (COUNT(*) FILTER (WHERE department_code = 'QC' AND job_state_number IN (3, 4, 5, 6) AND xpm_state NOT LIKE '%3.1%' AND xpm_state NOT LIKE '%3.2%'))::int AS "qcJobs",
         (COUNT(*) FILTER (WHERE department_code = 'UNCLASSIFIED' AND job_state_number IN (3, 4, 5, 6) AND xpm_state NOT LIKE '%3.1%' AND xpm_state NOT LIKE '%3.2%'))::int AS "unclassifiedJobs"
       FROM visible_client_jobs
-      GROUP BY id, display_name, category, bookkeeping_software, bookkeeping_by
+      GROUP BY id, display_name, category, bookkeeping_software, bookkeeping_by, bookkeeping_frequency
     ),
     filtered AS (
       SELECT *
@@ -317,6 +335,7 @@ export async function getClientSummaries({
       category: row.category,
       bookkeepingSoftware: row.bookkeepingSoftware,
       bookkeepingBy: row.bookkeepingBy,
+      bookkeepingFrequency: row.bookkeepingFrequency,
       totalJobs: toNumber(row.totalJobs),
       activeJobs: toNumber(row.activeJobs),
       completedJobs: toNumber(row.completedJobs),

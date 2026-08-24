@@ -10,6 +10,7 @@ import { Select } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
   bookkeepingByLabels,
+  bookkeepingFrequencyLabels,
   bookkeepingSoftwareLabels,
   clientCategories,
   clientCategoryLabels,
@@ -121,6 +122,7 @@ export default async function ReportsPage() {
   const departmentOptions = departments.map((department) => ({ value: department.code, label: department.name }));
   const softwareOptions = optionEntries(bookkeepingSoftwareLabels);
   const bookkeepingByOptions = optionEntries(bookkeepingByLabels);
+  const bookkeepingFrequencyOptions = optionEntries(bookkeepingFrequencyLabels);
 
   return (
     <>
@@ -275,11 +277,22 @@ export default async function ReportsPage() {
               ))}
             </Select>
           </Field>
+          <Field label="Software BK Cycle">
+            <Select name="bookkeepingFrequency">
+              <option value="">Any cycle</option>
+              {bookkeepingFrequencyOptions.map((frequency) => (
+                <option key={frequency.value} value={frequency.value}>
+                  {frequency.label}
+                </option>
+              ))}
+              <option value="unclassified">Unclassified</option>
+            </Select>
+          </Field>
         </ReportCard>
 
         <ReportCard
           action="/api/reports/workload/export"
-          description="User workload by hierarchy role, supervisor/team, department, workflow states, completed, cancelled, and missing jobs."
+          description="Linked summary and per-user job sheets with department totals, hierarchy, workflow states, and assignment roles."
           title="User Workload Report"
         >
           <Field label="Department">

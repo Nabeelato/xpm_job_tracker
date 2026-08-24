@@ -2,30 +2,39 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import type { BookkeepingBy, BookkeepingSoftware, ClientCategory } from "@prisma/client";
+import type { BookkeepingBy, BookkeepingFrequency, BookkeepingSoftware, ClientCategory } from "@prisma/client";
 import { updateClientBookkeepingAction, updateClientCategoryAction } from "@/app/(app)/clients/actions";
-import { bookkeepingByLabels, bookkeepingSoftwareLabels, clientCategoryLabels } from "@/lib/constants";
+import {
+  bookkeepingByLabels,
+  bookkeepingFrequencyLabels,
+  bookkeepingSoftwareLabels,
+  clientCategoryLabels,
+} from "@/lib/constants";
 
 const softwareOptions = Object.entries(bookkeepingSoftwareLabels) as [BookkeepingSoftware, string][];
 const byOptions = Object.entries(bookkeepingByLabels) as [BookkeepingBy, string][];
 const categoryOptions = Object.entries(clientCategoryLabels) as [ClientCategory, string][];
+const frequencyOptions = Object.entries(bookkeepingFrequencyLabels) as [BookkeepingFrequency, string][];
 
 export function ClientBookkeepingInline({
   clientId,
   category: initialCategory,
   bookkeepingSoftware: initialSoftware,
   bookkeepingBy: initialBy,
+  bookkeepingFrequency: initialFrequency,
 }: {
   clientId: string;
   category: ClientCategory | null;
   bookkeepingSoftware: BookkeepingSoftware | null;
   bookkeepingBy: BookkeepingBy | null;
+  bookkeepingFrequency: BookkeepingFrequency | null;
 }) {
   const router = useRouter();
   const [saving, setSaving] = useState(false);
   const [category, setCategory] = useState<ClientCategory | "">(initialCategory ?? "MANUAL");
   const [software, setSoftware] = useState<BookkeepingSoftware | "">(initialSoftware ?? "");
   const [by, setBy] = useState<BookkeepingBy | "">(initialBy ?? "FIRM");
+  const [frequency, setFrequency] = useState<BookkeepingFrequency | "">(initialFrequency ?? "");
 
   const isSoftware = category === "SOFTWARE";
 
@@ -35,6 +44,7 @@ export function ClientBookkeepingInline({
     if (next !== "SOFTWARE") {
       setSoftware("");
       setBy("FIRM");
+      setFrequency("");
     }
 
     setSaving(true);
@@ -43,27 +53,20 @@ export function ClientBookkeepingInline({
       catFd.append("clientId", clientId);
       catFd.append("category", value);
       await updateClientCategoryAction(catFd);
-
-      if (next !== "SOFTWARE") {
-        const bkFd = new FormData();
-        bkFd.append("clientId", clientId);
-        bkFd.append("bookkeepingSoftware", "");
-        bkFd.append("bookkeepingBy", "FIRM");
-        await updateClientBookkeepingAction(bkFd);
-      }
     } finally {
       setSaving(false);
       router.refresh();
     }
   }
 
-  async function saveBookkeeping(newSoftware: string, newBy: string) {
+  async function saveBookkeeping(newSoftware: string, newBy: string, newFrequency: string) {
     setSaving(true);
     try {
       const fd = new FormData();
       fd.append("clientId", clientId);
       fd.append("bookkeepingSoftware", newSoftware);
       fd.append("bookkeepingBy", newBy);
+      fd.append("bookkeepingFrequency", newFrequency);
       await updateClientBookkeepingAction(fd);
     } finally {
       setSaving(false);
@@ -96,7 +99,7 @@ export function ClientBookkeepingInline({
             onChange={(e) => {
               const next = e.target.value as BookkeepingSoftware | "";
               setSoftware(next);
-              void saveBookkeeping(next, by);
+              void saveBookkeeping(next, by, frequency);
             }}
             value={software}
           >
@@ -112,11 +115,28 @@ export function ClientBookkeepingInline({
             onChange={(e) => {
               const next = e.target.value as BookkeepingBy | "";
               setBy(next);
-              void saveBookkeeping(software, next);
+              void saveBookkeeping(software, next, frequency);
             }}
             value={by}
           >
             {byOptions.map(([val, label]) => (
+              <option key={val} value={val}>{label}</option>
+            ))}
+          </select>
+
+          <select
+            aria-label="Software bookkeeping cycle"
+            className={selectClass}
+            disabled={saving}
+            onChange={(e) => {
+              const next = e.target.value as BookkeepingFrequency | "";
+              setFrequency(next);
+              void saveBookkeeping(software, by, next);
+            }}
+            value={frequency}
+          >
+            <option value="">— Monthly / Quarterly —</option>
+            {frequencyOptions.map(([val, label]) => (
               <option key={val} value={val}>{label}</option>
             ))}
           </select>

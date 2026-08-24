@@ -4,6 +4,7 @@ import type { AppSessionUser } from "@/lib/rbac";
 import {
   availableJobsWhere,
   canInteractWithJob,
+  canUpdateStaffJob,
   visibleAvailableQueueJobsWhere,
   visibleJobsWhere,
 } from "@/lib/rbac";
@@ -25,30 +26,31 @@ test("every QC role has unrestricted all-jobs visibility", () => {
   }
 });
 
-test("every QC role sees the same global available queue as an admin", () => {
+test("every role sees the same global workflow queue as an admin", () => {
   const adminQueue = visibleAvailableQueueJobsWhere(user({ role: "ADMIN", departmentCode: "AFS" }));
 
   for (const role of ["MANAGER", "SUPERVISOR", "STAFF"] as const) {
-    const qcQueue = visibleAvailableQueueJobsWhere(user({ role, departmentCode: "QC" }));
-    assert.deepEqual(qcQueue, adminQueue);
+    for (const departmentCode of ["QC", "VAT", "BK"] as const) {
+      const queue = visibleAvailableQueueJobsWhere(user({ role, departmentCode }));
+      assert.deepEqual(queue, adminQueue);
+    }
   }
+
+  assert.doesNotMatch(JSON.stringify(adminQueue), /finalDepartment|SOFTWARE_BK/);
 });
 
-test("QC global queue visibility does not broaden self-claim eligibility", () => {
-  const qcManager = user({ role: "MANAGER", departmentCode: "QC", departmentId: "qc-department" });
-  const claimWhere = availableJobsWhere(qcManager);
+test("staff, supervisors, and managers can claim available roles across departments", () => {
+  for (const role of ["MANAGER", "SUPERVISOR", "STAFF"] as const) {
+    const claimWhere = availableJobsWhere(user({
+      role,
+      departmentCode: "VAT",
+      departmentId: "vat-department",
+    }));
+    const serialized = JSON.stringify(claimWhere);
 
-  assert.notDeepEqual(claimWhere, visibleAvailableQueueJobsWhere(qcManager));
-  assert.match(JSON.stringify(claimWhere), /MANAGER/);
-});
-
-test("non-QC available queues remain department and role scoped", () => {
-  const vatSupervisor = user({ role: "SUPERVISOR", departmentCode: "VAT", departmentId: "vat-department" });
-  const where = visibleAvailableQueueJobsWhere(vatSupervisor);
-  const serialized = JSON.stringify(where);
-
-  assert.match(serialized, /vat-department/);
-  assert.match(serialized, /SUPERVISOR/);
+    assert.match(serialized, new RegExp(role));
+    assert.doesNotMatch(serialized, /vat-department|finalDepartment/);
+  }
 });
 
 test("staff queue and interaction do not require a configured supervisor", () => {
@@ -62,6 +64,40 @@ test("staff queue and interaction do not require a configured supervisor", () =>
     jobStateNumber: 4,
     archived: false,
   }), true);
+});
+
+test("managers retain access to jobs they claim outside their department", () => {
+  const manager = user({
+    id: "manager-1",
+    role: "MANAGER",
+    departmentId: "vat-department",
+    departmentCode: "VAT",
+  });
+  const serialized = JSON.stringify(visibleJobsWhere(manager));
+
+  assert.match(serialized, /manager-1/);
+  assert.match(serialized, /vat-department/);
+  assert.equal(canInteractWithJob(manager, {
+    assignments: [{ userId: manager.id, assignmentRole: "MANAGER" }],
+    finalDepartmentId: "bk-department",
+    jobStateNumber: 4,
+    archived: false,
+  }), true);
+});
+
+test("only the actively assigned staff member can submit a staff job update", () => {
+  const assignedStaff = user({ id: "staff-1", role: "STAFF" });
+  const job = {
+    assignments: [
+      { userId: "staff-1", assignmentRole: "STAFF" as const },
+      { userId: "supervisor-1", assignmentRole: "SUPERVISOR" as const },
+    ],
+  };
+
+  assert.equal(canUpdateStaffJob(assignedStaff, job), true);
+  assert.equal(canUpdateStaffJob(user({ id: "staff-2", role: "STAFF" }), job), false);
+  assert.equal(canUpdateStaffJob(user({ id: "supervisor-1", role: "SUPERVISOR" }), job), false);
+  assert.equal(canUpdateStaffJob(user({ id: "admin-1", role: "ADMIN" }), job), false);
 });
 
 test("Faizan sees only jobs attributed to him by XPM", () => {
